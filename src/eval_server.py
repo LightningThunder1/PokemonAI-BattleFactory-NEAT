@@ -1,3 +1,4 @@
+import os
 import socket
 from neat.nn import FeedForwardNetwork
 import subprocess
@@ -44,6 +45,6 @@ class EvaluationServer:
             self.EMU_PATH,
             f'--socket_port={self.PORT}',
             f'--socket_ip={self.HOST}',
-            '--lua=./src/eval_client.lua'
+            f'--lua={os.path.abspath("./src/eval_client.lua")}'
         ])
 
