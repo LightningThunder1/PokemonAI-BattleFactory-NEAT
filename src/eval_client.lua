@@ -16,8 +16,8 @@ while true do
         print("Breaking loop.")
     	break
     end
-    if emu.framecount() % 180 == 0 then
-        print("Sending screenshot to server...")
+    if emu.framecount() % 60 == 0 then
+        -- print("Sending screenshot to server...")
         comm.socketServerScreenShot()
         comm.socketServerScreenShotResponse()
     end

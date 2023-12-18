@@ -15,6 +15,8 @@ class EvaluationServer:
     HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
     PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
     EMU_PATH = '/home/javen/Desktop/PokeDS/BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
+    KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
+    DECISIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right']
 
     def __init__(self):
         pass
@@ -55,11 +57,8 @@ class EvaluationServer:
                             # img.show()
                             im = np.array(img)
 
-                            # Edge Detection Kernel
-                            kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
-
                             # convolve image
-                            im = correlate(im, kernel)
+                            im = correlate(im, self.KERNEL)
                             # PIL.Image.fromarray(np.uint8(im * 255)).show()
 
                             # reduce image dimensions
