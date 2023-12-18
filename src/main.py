@@ -53,4 +53,6 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    pass
+    config_path = os.path.join(os.curdir, 'neat-config')
+    test = eval_server.EvaluationServer()
+    test.eval_genome(None)
