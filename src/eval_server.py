@@ -3,6 +3,7 @@ import socket
 import PIL
 import numpy as np
 from scipy.signal import correlate
+from skimage.measure import block_reduce
 from neat.nn import FeedForwardNetwork
 import subprocess
 from PIL import Image
@@ -61,10 +62,18 @@ class EvaluationServer:
                             im = correlate(im, kernel)
                             # PIL.Image.fromarray(np.uint8(im * 255)).show()
 
+                            # reduce image dimensions
+                            im = block_reduce(im, block_size=(4, 4), func=np.average)
+                            # print(im.shape)
+                            # PIL.Image.fromarray(im).show()
+
                         # respond to client
                         conn.sendall(data)
                 except Exception as e:
                     print(e)
+                    # close server
+                    s.shutdown(socket.SHUT_RDWR)
+                    s.close()
 
             # close server
             s.shutdown(socket.SHUT_RDWR)

@@ -2,3 +2,4 @@ neat-python
 Pillow~=10.1.0
 numpy~=1.24.4
 scipy~=1.10.1
+scikit-image~=0.21.0

@@ -12,7 +12,7 @@ savestate.loadslot(1)
 -- print(client.screenheight())
 
 while true do
-    if emu.framecount() % 10000 == 0 then
+    if emu.framecount() % 1000 == 0 then
         print("Breaking loop.")
     	break
     end
