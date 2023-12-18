@@ -16,7 +16,9 @@ while true do
         local decision = comm.socketServerScreenShotResponse()
         print(decision)
         Input = {}
-        Input[decision] = "True"
+        if decision ~= "Null" then
+            Input[decision] = "True"
+        end
     end
     -- advance frame
     -- print("Advancing frame...")

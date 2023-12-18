@@ -18,7 +18,7 @@ class EvaluationServer:
     PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
     EMU_PATH = '/home/javen/Desktop/PokeDS/BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
     KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
-    DECISIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right']
+    DECISIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
 
     def __init__(self):
         pass
