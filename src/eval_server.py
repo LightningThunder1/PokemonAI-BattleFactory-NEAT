@@ -1,5 +1,6 @@
 import os
 import socket
+import random
 import PIL
 import numpy as np
 from scipy.signal import correlate
@@ -8,6 +9,7 @@ from neat.nn import FeedForwardNetwork
 import subprocess
 from PIL import Image
 import io
+import sys
 
 
 class EvaluationServer:
@@ -42,6 +44,7 @@ class EvaluationServer:
                         data = conn.recv(30000)
 
                         # client finished sending data
+                        # print(len(data), data)
                         if not data:
                             break
 
@@ -66,8 +69,14 @@ class EvaluationServer:
                             # print(im.shape)
                             # PIL.Image.fromarray(im).show()
 
-                        # respond to client
-                        conn.sendall(data)
+                            # TODO forward feed
+                            decision = random.choice(self.DECISIONS)
+
+                            # respond to client with decision
+                            print(f"Decision: {decision}")
+                            conn.sendall(
+                                b'' + bytes(f"{len(decision)} {decision}", 'utf-8')
+                            )
                 except Exception as e:
                     print(e)
                     # close server
