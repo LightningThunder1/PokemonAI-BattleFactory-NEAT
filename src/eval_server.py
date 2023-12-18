@@ -1,7 +1,7 @@
 import os
 import socket
-
 import PIL
+import numpy as np
 from neat.nn import FeedForwardNetwork
 import subprocess
 from PIL import Image
@@ -41,8 +41,11 @@ class EvaluationServer:
 
                         # did client send a PNG?
                         if data[d_index:d_index + 4] == b"\x89PNG":
-                            img = PIL.Image.open(io.BytesIO(data[6:]))
-                            img.show()
+                            # read image and convert to grayscale
+                            img = PIL.Image.open(io.BytesIO(data[6:])).convert('L')
+                            # img.show()
+                            im = np.array(img)
+                            print(im.shape)
 
                         # client finished sending data
                         if not data:
