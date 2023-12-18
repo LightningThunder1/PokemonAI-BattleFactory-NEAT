@@ -2,6 +2,7 @@ import os
 import socket
 import PIL
 import numpy as np
+from scipy.signal import correlate
 from neat.nn import FeedForwardNetwork
 import subprocess
 from PIL import Image
@@ -36,21 +37,32 @@ class EvaluationServer:
                     while True:
                         # receive client buffered message
                         data = conn.recv(30000)
+
+                        # client finished sending data
+                        if not data:
+                            break
+
+                        # calculate message data index
                         d_index = data.find(b" ") + 1
                         # print(len(data))
 
                         # did client send a PNG?
                         if data[d_index:d_index + 4] == b"\x89PNG":
+                            print("Processing image...")
                             # read image and convert to grayscale
                             img = PIL.Image.open(io.BytesIO(data[6:])).convert('L')
                             # img.show()
                             im = np.array(img)
-                            print(im.shape)
 
-                        # client finished sending data
-                        if not data:
-                            break
-                        # conn.sendall(data)
+                            # Edge Detection Kernel
+                            kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
+
+                            # convolve image
+                            im = correlate(im, kernel)
+                            # PIL.Image.fromarray(np.uint8(im * 255)).show()
+
+                        # respond to client
+                        conn.sendall(data)
                 except Exception as e:
                     print(e)
 
@@ -72,4 +84,3 @@ class EvaluationServer:
             f'--socket_ip={self.HOST}',
             f'--lua={os.path.abspath("./src/eval_client.lua")}'
         ])
-
