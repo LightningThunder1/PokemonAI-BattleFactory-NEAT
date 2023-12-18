@@ -5,7 +5,16 @@ print(comm.socketServerGetInfo())
 print("Loading save slot 1...")
 savestate.loadslot(1)
 
-comm.socketServerSend("Hello!")
+-- comm.socketServerSend("Hello!")
+-- print(comm.socketServerResponse())
+-- print("Server responded...")
+print(client.screenwidth())
+print(client.screenheight())
 
-print(comm.socketServerResponse())
-print("Server responded...")
+comm.socketServerSend("TEST!")
+comm.socketServerScreenShot()
+-- print(comm.socketServerScreenShotResponse())
+-- print("Server responded...")
+
+-- Close emulator
+client.exit()

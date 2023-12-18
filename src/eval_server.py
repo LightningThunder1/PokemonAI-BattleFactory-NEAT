@@ -1,7 +1,11 @@
 import os
 import socket
+
+import PIL
 from neat.nn import FeedForwardNetwork
 import subprocess
+from PIL import Image
+import io
 
 
 class EvaluationServer:
@@ -27,13 +31,31 @@ class EvaluationServer:
             # wait for agent to connect to socket
             conn, addr = s.accept()
             with conn:
-                print(f"Connected by {addr}")
-                while True:
-                    data = conn.recv(1024)
-                    print(data)
-                    if not data:
-                        break
-                    conn.sendall(data)
+                print(f"Connected by {addr}.")
+                try:
+                    while True:
+                        # receive client buffered message
+                        data = conn.recv(30000)
+                        d_index = data.find(b" ") + 1
+                        # print(len(data))
+
+                        # did client send a PNG?
+                        if data[d_index:d_index + 4] == b"\x89PNG":
+                            img = PIL.Image.open(io.BytesIO(data[6:]))
+                            img.show()
+
+                        # client finished sending data
+                        if not data:
+                            break
+                        # conn.sendall(data)
+                except Exception as e:
+                    print(e)
+
+            # close server
+            s.shutdown(socket.SHUT_RDWR)
+            s.close()
+
+        # return fitness score
         return 0.0
 
     def spawn_agent(self) -> None:
