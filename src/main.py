@@ -1,9 +1,14 @@
 import os
 import neat
+from eval_server import EvaluationServer
 
 
 class Trainer:
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, eval_server: EvaluationServer):
+        """
+        """
+        self.eval_server = eval_server
+
         # Load configuration.
         self.config = neat.Config(
             neat.DefaultGenome, neat.DefaultReproduction,
@@ -12,15 +17,19 @@ class Trainer:
         )
 
     def eval_genomes(self, genomes, config):
-        for genome_id, genome in genomes:
-            genome.fitness = 4.0
-            net = neat.nn.FeedForwardNetwork.create(genome, config)
-            # for xi, xo in zip(xor_inputs, xor_outputs):
-            #     output = net.activate(xi)
-            #     genome.fitness -= (output[0] - xo[0]) ** 2
+        nets = [neat.nn.FeedForwardNetwork.create(genome, config) for _id, genome in genomes]
+        self.eval_server.eval_genomes(nets)
+        # for genome_id, genome in genomes:
+        #     genome.fitness = 4.0
+        #     net = neat.nn.FeedForwardNetwork.create(genome, config)
+        # for xi, xo in zip(xor_inputs, xor_outputs):
+        #     output = net.activate(xi)
+        #     genome.fitness -= (output[0] - xo[0]) ** 2
+        print("Finished evaluating genomes.")
 
     def run(self):
         # Create the population, which is the top-level object for a NEAT run.
+        print("Creating initial population...")
         p = neat.Population(self.config)
 
         # Add a stdout reporter to show progress in the terminal.
@@ -30,6 +39,7 @@ class Trainer:
         p.add_reporter(neat.Checkpointer(5))
 
         # Run for up to 300 generations.
+        print("Starting run...")
         winner = p.run(self.eval_genomes, 1)
 
         # Display the winning genome.
@@ -53,6 +63,7 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    config_path = os.path.join(os.curdir, 'neat-config')
-    test = eval_server.EvaluationServer()
-    test.eval_genome(None)
+    config_path = os.path.join(os.curdir, 'src/neat-config')
+    eval_server = EvaluationServer()
+    trainer = Trainer(config_path, eval_server)
+    trainer.run()
