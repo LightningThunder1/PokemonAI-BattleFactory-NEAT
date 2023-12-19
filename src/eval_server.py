@@ -23,72 +23,86 @@ class EvaluationServer:
     def __init__(self):
         pass
 
-    def eval_genome(self, genome: FeedForwardNetwork) -> float:
+    def eval_genomes(self, genomes: [FeedForwardNetwork]) -> None:
+        """
+        Evaluates a population of genomes.
+        """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             print("Initializing socket server...")
             # bind socket server
             s.bind((self.HOST, self.PORT))
             s.listen()
 
-            # spawn agent
-            self.spawn_agent()
-            print("Spawned agent.")
-
-            # wait for agent to connect to socket
-            conn, addr = s.accept()
-            with conn:
-                print(f"Connected by {addr}.")
-                try:
-                    while True:
-                        # receive client buffered message
-                        data = conn.recv(30000)
-
-                        # client finished sending data
-                        # print(len(data), data)
-                        if not data:
-                            break
-
-                        # calculate message data index
-                        d_index = data.find(b" ") + 1
-                        # print(len(data))
-
-                        # did client send a PNG?
-                        if data[d_index:d_index + 4] == b"\x89PNG":
-                            print("Processing image...")
-                            # read image and convert to grayscale
-                            img = PIL.Image.open(io.BytesIO(data[6:])).convert('L')
-                            # img.show()
-                            im = np.array(img)
-
-                            # convolve image
-                            im = correlate(im, self.KERNEL)
-                            # PIL.Image.fromarray(np.uint8(im * 255)).show()
-
-                            # reduce image dimensions
-                            im = block_reduce(im, block_size=(4, 4), func=np.average)
-                            # print(im.shape)
-                            # PIL.Image.fromarray(im).show()
-
-                            # TODO forward feed
-                            decision = random.choice(self.DECISIONS)
-
-                            # respond to client with decision
-                            print(f"Decision: {decision}")
-                            conn.sendall(
-                                b'' + bytes(f"{len(decision)} {decision}", 'utf-8')
-                            )
-                except Exception as e:
-                    print(e)
-                    # close server
-                    s.shutdown(socket.SHUT_RDWR)
-                    s.close()
+            # evaluate each genome
+            for genome in genomes:
+                fitness = self._eval(s, genome)
+                genome.fitness = fitness
 
             # close server
             s.shutdown(socket.SHUT_RDWR)
             s.close()
 
+    def _eval(self, s: socket, genome: FeedForwardNetwork) -> float:
+        """
+        Evaluates a single genome.
+        """
+        print("\nEvaluating genome...")
+        # init fitness
+        fitness = 0.0
+
+        # spawn agent
+        self.spawn_agent()
+        print("Spawned agent.")
+
+        # wait for agent to connect to socket
+        conn, addr = s.accept()
+        with conn:
+            print(f"Connected by {addr}.")
+            try:
+                while True:
+                    # receive client buffered message
+                    data = conn.recv(30000)
+
+                    # client finished sending data
+                    # print(len(data), data)
+                    if not data:
+                        break
+
+                    # calculate message data index
+                    d_index = data.find(b" ") + 1
+                    # print(len(data))
+
+                    # did client send a PNG?
+                    if data[d_index:d_index + 4] == b"\x89PNG":
+                        print("Processing image...")
+                        # read image and convert to grayscale
+                        img = PIL.Image.open(io.BytesIO(data[6:])).convert('L')
+                        # img.show()
+                        im = np.array(img)
+
+                        # convolve image
+                        im = correlate(im, self.KERNEL)
+                        # PIL.Image.fromarray(np.uint8(im * 255)).show()
+
+                        # reduce image dimensions
+                        im = block_reduce(im, block_size=(4, 4), func=np.average)
+                        # print(im.shape)
+                        # PIL.Image.fromarray(im).show()
+
+                        # TODO forward feed
+                        decision = random.choice(self.DECISIONS)
+
+                        # respond to client with decision
+                        print(f"Decision: {decision}")
+                        conn.sendall(
+                            b'' + bytes(f"{len(decision)} {decision}", 'utf-8')
+                        )
+            except Exception as e:
+                print(e)
+
         # return fitness score
-        return 0.0
+        print(f"Genome fitness: {fitness}")
+        return fitness
 
     def spawn_agent(self) -> None:
         """

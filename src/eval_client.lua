@@ -7,7 +7,7 @@ savestate.loadslot(1)
 
 Input = {}
 while true do
-    if emu.framecount() % 5000 == 0 then
+    if emu.framecount() % 1000 == 0 then
         print("Breaking loop.")
     	break
     end
