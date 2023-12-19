@@ -112,8 +112,11 @@ class EvaluationServer:
                 # print(im.shape)
                 # PIL.Image.fromarray(im).show()
 
-                # TODO forward feed
-                decision = random.choice(self.DECISIONS)
+                # forward feed
+                im = im.reshape(-1)
+                outputs = genome.activate(im)
+                decision = self.DECISIONS[outputs.index(max(outputs))]
+                # decision = random.choice(self.DECISIONS)
 
                 # respond to client with decision
                 print(f"Decision: {decision}")
