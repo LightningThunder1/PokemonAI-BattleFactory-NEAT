@@ -19,6 +19,9 @@ class EvaluationServer:
     EMU_PATH = '/home/javen/Desktop/PokeDS/BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
     KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
     DECISIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
+    PNG_HEADER = b"\x89PNG"
+    READY_STATE = b"5 READY"
+    FINISH_STATE = b"8 FINISHED"
 
     def __init__(self):
         pass
@@ -33,16 +36,42 @@ class EvaluationServer:
             s.bind((self.HOST, self.PORT))
             s.listen()
 
-            # evaluate each genome
-            for genome in genomes:
-                fitness = self._eval(s, genome)
-                genome.fitness = fitness
+            # spawn agent
+            self.spawn_agent()
+            print("Spawned emulator client.")
+
+            # wait for agent to connect to socket
+            client, addr = s.accept()
+            with client:
+                print(f"Connected by {addr}.")
+                try:
+                    # evaluate each genome
+                    for genome in genomes:
+                        # wait for client to be ready
+                        while True:
+                            data = client.recv(1024)
+                            if not data:
+                                raise Exception("Connection closed before finishing evaluation.")
+                            if data == self.READY_STATE:
+                                print("Client is ready to evaluate next genome.")
+                                client.sendall(self.READY_STATE)
+                                break
+
+                        # begin genome evaluation
+                        fitness = self._eval(client, genome)
+                        genome.fitness = fitness
+
+                    # send finish state to client
+                    client.sendall(self.FINISH_STATE)
+
+                except Exception as e:
+                    print(e)
 
             # close server
             s.shutdown(socket.SHUT_RDWR)
             s.close()
 
-    def _eval(self, s: socket, genome: FeedForwardNetwork) -> float:
+    def _eval(self, client, genome: FeedForwardNetwork) -> float:
         """
         Evaluates a single genome.
         """
@@ -50,59 +79,56 @@ class EvaluationServer:
         # init fitness
         fitness = 0.0
 
-        # spawn agent
-        self.spawn_agent()
-        print("Spawned agent.")
+        # repeat game loop
+        while True:
+            # receive client buffered message
+            data = client.recv(30000)
 
-        # wait for agent to connect to socket
-        conn, addr = s.accept()
-        with conn:
-            print(f"Connected by {addr}.")
-            try:
-                while True:
-                    # receive client buffered message
-                    data = conn.recv(30000)
+            # client finished sending data
+            # print(len(data), data)
+            if not data:
+                raise Exception("Connection closed before finishing evaluation.")
+            if data == self.FINISH_STATE:
+                print("Client is finished evaluating genome.")
+                break
 
-                    # client finished sending data
-                    # print(len(data), data)
-                    if not data:
-                        break
+            # calculate message data index
+            m_index = self.calculate_mindex(data)
 
-                    # calculate message data index
-                    d_index = data.find(b" ") + 1
-                    # print(len(data))
+            # did client send a PNG?
+            if data[m_index:m_index + 4] == self.PNG_HEADER:
+                print("Processing image...")
+                # read image and convert to grayscale
+                img = PIL.Image.open(io.BytesIO(data[6:])).convert('L')
+                # img.show()
+                im = np.array(img)
 
-                    # did client send a PNG?
-                    if data[d_index:d_index + 4] == b"\x89PNG":
-                        print("Processing image...")
-                        # read image and convert to grayscale
-                        img = PIL.Image.open(io.BytesIO(data[6:])).convert('L')
-                        # img.show()
-                        im = np.array(img)
+                # convolve image
+                im = correlate(im, self.KERNEL)
+                # PIL.Image.fromarray(np.uint8(im * 255)).show()
 
-                        # convolve image
-                        im = correlate(im, self.KERNEL)
-                        # PIL.Image.fromarray(np.uint8(im * 255)).show()
+                # reduce image dimensions
+                im = block_reduce(im, block_size=(4, 4), func=np.average)
+                # print(im.shape)
+                # PIL.Image.fromarray(im).show()
 
-                        # reduce image dimensions
-                        im = block_reduce(im, block_size=(4, 4), func=np.average)
-                        # print(im.shape)
-                        # PIL.Image.fromarray(im).show()
+                # TODO forward feed
+                decision = random.choice(self.DECISIONS)
 
-                        # TODO forward feed
-                        decision = random.choice(self.DECISIONS)
-
-                        # respond to client with decision
-                        print(f"Decision: {decision}")
-                        conn.sendall(
-                            b'' + bytes(f"{len(decision)} {decision}", 'utf-8')
-                        )
-            except Exception as e:
-                print(e)
+                # respond to client with decision
+                print(f"Decision: {decision}")
+                client.sendall(b'' + bytes(f"{len(decision)} {decision}", 'utf-8'))
 
         # return fitness score
         print(f"Genome fitness: {fitness}")
         return fitness
+
+    @staticmethod
+    def calculate_mindex(data):
+        """
+        Calculates the message index for the received data.
+        """
+        return data.find(b" ") + 1
 
     def spawn_agent(self) -> None:
         """
