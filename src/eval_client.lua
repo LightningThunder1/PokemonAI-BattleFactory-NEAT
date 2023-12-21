@@ -11,13 +11,35 @@ References:
 -- ### CONSTANTS ###
 
 -- orderings of shuffled pokemon data blocks from shift-values
-shuffleOrder = {
+local shuffle_order = {
 	["00"] = {A = 1, B = 2, C = 3, D = 4};
-	["11"] = {B = 1, D = 2, C = 3, A = 4};
+	["01"] = {A = 1, B = 2, C = 4, D = 3};
+	["02"] = {A = 1, B = 3, C = 2, D = 4};
+	["03"] = {A = 1, B = 4, C = 2, D = 3};
+	["04"] = {A = 1, B = 3, C = 4, D = 2};
+	["05"] = {A = 1, B = 4, C = 3, D = 2};
+	["06"] = {A = 2, B = 1, C = 3, D = 4};
+	["07"] = {A = 2, B = 1, C = 4, D = 3};
+	["08"] = {A = 3, B = 1, C = 2, D = 4};
+	["09"] = {A = 4, B = 1, C = 2, D = 3};
+	["10"] = {A = 3, B = 1, C = 4, D = 2};
+	["11"] = {A = 4, B = 1, C = 3, D = 2};
+	["12"] = {A = 2, B = 3, C = 1, D = 4};
+	["13"] = {A = 2, B = 4, C = 1, D = 3};
+	["14"] = {A = 3, B = 2, C = 1, D = 4};
+	["15"] = {A = 4, B = 2, C = 1, D = 3};
+	["16"] = {A = 3, B = 4, C = 1, D = 2};
+	["17"] = {A = 4, B = 3, C = 1, D = 2};
+	["18"] = {A = 2, B = 3, C = 4, D = 1};
+	["19"] = {A = 2, B = 4, C = 3, D = 1};
+	["20"] = {A = 3, B = 2, C = 4, D = 1};
+	["21"] = {A = 4, B = 2, C = 3, D = 1};
+	["22"] = {A = 3, B = 4, C = 2, D = 1};
+	["23"] = {A = 4, B = 3, C = 2, D = 1};
 }
 
 -- pokemon data structure
-pokemon_struct = {
+local pokemon_struct = {
 	ID = 0x0,
 	PID = 0x0,
 	HeldItem = 0x0,
@@ -59,7 +81,7 @@ pokemon_struct = {
 }
 
 -- used in PRNG state calculation
-function mult32(a, b)
+local function mult32(a, b)
 	local c = a >> 16
 	local d = a % 0x10000
 	local e = b >> 16
@@ -78,7 +100,7 @@ function table.shallow_copy(t)
 	return t2
 end
 
-function decrypt(seed, addr, words)
+local function decrypt(seed, addr, words)
 	-- decrypt pokemon data bytes
 	local X = { seed }
 	local D = {}
@@ -92,7 +114,7 @@ function decrypt(seed, addr, words)
 end
 
 local function numberToBinary(x)
-	ret = ""
+	local ret = ""
 	while x~=1 and x~=0 do
 		ret = tostring(x % 2)..ret
 		x = math.modf(x / 2)
@@ -131,10 +153,10 @@ local function read_pokemon(pp, party_idx)
 	end
 
 	-- calculate shuffled block offsets
-	local a_offset = (shuffleOrder[shift]["A"] - 1) * 0x20
-	local b_offset = (shuffleOrder[shift]["B"] - 1) * 0x20
-	local c_offset = (shuffleOrder[shift]["C"] - 1) * 0x20
-	local d_offset = (shuffleOrder[shift]["D"] - 1) * 0x20
+	local a_offset = (shuffle_order[shift]["A"] - 1) * 0x20
+	local b_offset = (shuffle_order[shift]["B"] - 1) * 0x20
+	local c_offset = (shuffle_order[shift]["C"] - 1) * 0x20
+	local d_offset = (shuffle_order[shift]["D"] - 1) * 0x20
 
 	-- instantiate new pokemon obj and populate vars
 	local pokemon = table.shallow_copy(pokemon_struct)
