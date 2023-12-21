@@ -166,13 +166,13 @@ local function read_pokemon(pp, party_idx)
 	pokemon.Ability = fetch_Dv(a_offset, 0x15 - 0x08)
 	pokemon.EXP = fetch_Dv(a_offset, 0x10 - 0x08) -- TODO
 	pokemon.Moves = {
-		{
+        {
 			ID = fetch_Dv(b_offset, 0x28 - 0x28) & 0xFFFF,
 			PP = fetch_Dv(b_offset, 0x30 - 0x28) & 0x00FF,
 		};
 		{
 			ID = fetch_Dv(b_offset, 0x2A - 0x28) & 0xFFFF,
-			PP = fetch_Dv(b_offset, 0x30 - 0x28) >> 8,
+			PP = (fetch_Dv(b_offset, 0x30 - 0x28) & 0xFF00) >> 8,
 		};
 		{
 			ID = fetch_Dv(b_offset, 0x2C - 0x28) & 0xFFFF,
@@ -180,7 +180,7 @@ local function read_pokemon(pp, party_idx)
 		};
 		{
 			ID = fetch_Dv(b_offset, 0x2E - 0x28) & 0xFFFF,
-			PP = fetch_Dv(b_offset, 0x32 - 0x28) >> 8,
+			PP = (fetch_Dv(b_offset, 0x32 - 0x28) & 0xFF00) >> 8,
 		};
 	}
 	pokemon.IVs = {  -- TODO
