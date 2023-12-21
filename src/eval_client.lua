@@ -213,24 +213,22 @@ local function read_pokemon(pp, party_idx)
 	return pokemon
 end
 
--- print(pokemon)
-
--- print("MOVES")
--- print(pokemon.Moves[1])
--- print(pokemon.Moves[2])
--- print(pokemon.Moves[3])
--- print(pokemon.Moves[4])
-
--- print("STATS")
--- print(pokemon.Stats)
-
--- print("EVs")
--- print(pokemon.EVs)
-
--- print("IVs")
--- -- print(fetch_Dv(b_offset, 0x38 - 0x28) & 0xFFFF)
--- -- print(fetch_Dv(b_offset, 0x3A - 0x28) & 0xFFFF)
--- print(pokemon.IVs)
+local function print_pokemon(pokemon)
+    print(pokemon)
+    print("MOVES")
+    print(pokemon.Moves[1])
+    print(pokemon.Moves[2])
+    print(pokemon.Moves[3])
+    print(pokemon.Moves[4])
+    print("STATS")
+    print(pokemon.Stats)
+    print("EVs")
+    print(pokemon.EVs)
+    print("IVs")
+    -- print(fetch_Dv(b_offset, 0x38 - 0x28) & 0xFFFF)
+    -- print(fetch_Dv(b_offset, 0x3A - 0x28) & 0xFFFF)
+    print(pokemon.IVs)
+end
 
 
 -- ### GAME LOOP ###
