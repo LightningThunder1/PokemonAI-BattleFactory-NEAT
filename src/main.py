@@ -4,17 +4,12 @@ from eval_server import EvaluationServer
 
 
 class Trainer:
-    def __init__(self, config_path: str, eval_server: EvaluationServer):
+    def __init__(self, config, eval_server: EvaluationServer):
         """
+        Runs the NEAT algorithm and orchestrates the evaluation process.
         """
         self.eval_server = eval_server
-
-        # Load configuration.
-        self.config = neat.Config(
-            neat.DefaultGenome, neat.DefaultReproduction,
-            neat.DefaultSpeciesSet, neat.DefaultStagnation,
-            config_path
-        )
+        self.config = config
 
     def eval_genomes(self, genomes, config):
         nets = [neat.nn.FeedForwardNetwork.create(genome, config) for _id, genome in genomes]
@@ -57,7 +52,18 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    config_path = os.path.join(os.curdir, 'src/neat-config')
-    eval_server = EvaluationServer()
-    trainer = Trainer(config_path, eval_server)
+    # TODO parse env vars
+    game_mode = "battle_factory"
+
+    # load configuration for game mode
+    config_path = os.path.join(os.curdir, f'src/neat_{game_mode.replace("_","")}.cfg')
+    _config = neat.Config(
+        neat.DefaultGenome, neat.DefaultReproduction,
+        neat.DefaultSpeciesSet, neat.DefaultStagnation,
+        config_path
+    )
+
+    # init trainer & run
+    _eval_server = EvaluationServer(game_mode=game_mode)
+    trainer = Trainer(_config, _eval_server)
     trainer.run()
