@@ -24,6 +24,7 @@ class EvaluationServer:
     ACTIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
     EVAL_SCRIPT = None
     PNG_HEADER = b"\x89PNG"
+    BF_STATE_HEADER = b"BF_STATE"
     READY_STATE = b"5 READY"
     FINISH_STATE = b"8 FINISHED"
 
@@ -92,7 +93,6 @@ class EvaluationServer:
             data = client.recv(30000)
 
             # client finished sending data
-            # print(len(data), data)
             if not data:
                 raise Exception("Connection closed before finishing evaluation.")
             if data == self.FINISH_STATE:
@@ -102,9 +102,30 @@ class EvaluationServer:
             # calculate message data index
             m_index = self.calculate_mindex(data)
 
-            # did client send a PNG?
+            # is msg a battle factory input state?
+            if data[m_index:m_index + 8] == self.BF_STATE_HEADER:
+                print("Processing BF state...")
+                # read and sort input state
+                bf_state = json.loads(data[m_index + 8:])
+                bf_state = self.sort_dict(bf_state)
+                # print(json.dumps(bf_state, indent=4))
+
+                # flatten input state
+                bf_state = self.flatten_dict(bf_state)
+                input_layer = np.array(list(bf_state.values()))
+                # print(input_layer)
+
+                # forward feed
+                output_layer = genome.activate(input_layer)
+                output_msg = "{ " + ", ".join([str(round(x, 5)) for x in output_layer]) + " }"
+                print(output_msg)
+
+                # respond with output message
+                client.sendall(b'' + bytes(f"{len(output_msg)} {output_msg}", 'utf-8'))
+
+            # is msg a state screenshot?
             if data[m_index:m_index + 4] == self.PNG_HEADER:
-                print("Processing image...")
+                print("Processing state screenshot...")
                 outputs = self._ff_screenshot(data[6:], genome)
                 decision = self.ACTIONS[outputs.index(max(outputs))]
                 # decision = random.choice(self.DECISIONS)
