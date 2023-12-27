@@ -18,13 +18,17 @@ class EvaluationServer:
     PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
     EMU_PATH = '/home/javen/Desktop/PokeDS/BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
     KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
-    DECISIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
+    ACTIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
+    EVAL_SCRIPT = None
     PNG_HEADER = b"\x89PNG"
     READY_STATE = b"5 READY"
     FINISH_STATE = b"8 FINISHED"
 
-    def __init__(self):
-        pass
+    def __init__(self, game_mode: str):
+        if game_mode == "open_world":
+            self.EVAL_SCRIPT = "./src/eval_openworld.lua"
+        if game_mode == "battle_factory":
+            self.EVAL_SCRIPT = "./src/eval_battlefactory.lua"
 
     def eval_genomes(self, genomes: [FeedForwardNetwork]) -> None:
         """
@@ -37,7 +41,7 @@ class EvaluationServer:
             s.listen()
 
             # spawn agent
-            self.spawn_agent()
+            self.spawn_client()
             print("Spawned emulator client.")
 
             # wait for agent to connect to socket
@@ -115,7 +119,7 @@ class EvaluationServer:
                 # forward feed
                 im = im.reshape(-1)
                 outputs = genome.activate(im)
-                decision = self.DECISIONS[outputs.index(max(outputs))]
+                decision = self.ACTIONS[outputs.index(max(outputs))]
                 # decision = random.choice(self.DECISIONS)
 
                 # respond to client with decision
@@ -133,7 +137,7 @@ class EvaluationServer:
         """
         return data.find(b" ") + 1
 
-    def spawn_agent(self) -> None:
+    def spawn_client(self) -> None:
         """
         Spawns the emulator process and starts the eval_client.lua script.
         :return: None
@@ -142,5 +146,5 @@ class EvaluationServer:
             self.EMU_PATH,
             f'--socket_port={self.PORT}',
             f'--socket_ip={self.HOST}',
-            f'--lua={os.path.abspath("./src/eval_client.lua")}'
+            f'--lua={os.path.abspath(self.EVAL_SCRIPT)}'
         ])
