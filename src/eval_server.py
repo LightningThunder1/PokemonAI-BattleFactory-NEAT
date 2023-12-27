@@ -1,6 +1,9 @@
+import json
 import os
 import socket
 import random
+from collections.abc import MutableMapping
+
 import PIL
 import numpy as np
 from scipy.signal import correlate
@@ -136,6 +139,26 @@ class EvaluationServer:
         im = im.reshape(-1)
         outputs = genome.activate(im)
         return outputs
+
+    @classmethod
+    def sort_dict(cls, item: dict):
+        """
+        Recursively sorts a nested dictionary.
+        """
+        for k, v in sorted(item.items()):
+            item[k] = sorted(v) if isinstance(v, list) else v
+        return {k: cls.sort_dict(v) if isinstance(v, dict) else v for k, v in sorted(item.items())}
+
+    @classmethod
+    def flatten_dict(cls, d: MutableMapping, parent_key: str = '', sep: str = '.') -> MutableMapping:
+        items = []
+        for k, v in d.items():
+            new_key = parent_key + sep + k if parent_key else k
+            if isinstance(v, MutableMapping):
+                items.extend(cls.flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
 
     @staticmethod
     def calculate_mindex(data):
