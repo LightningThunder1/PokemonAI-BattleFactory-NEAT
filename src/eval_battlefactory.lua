@@ -114,7 +114,9 @@ local function death_check()
     if mode == 0x0 or mode == 0x140 or mode == 0x57BC or mode == 0x290 then
     	return
     end
-    -- print("Checking active pokemons for death...")
+    
+    -- checking active battle pokemon for deaths
+    has_battled = 1
 
     -- enemy death check
     local enemy_id = memory.read_u16_le(gp + active_enemy)
