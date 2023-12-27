@@ -102,23 +102,7 @@ class EvaluationServer:
             # did client send a PNG?
             if data[m_index:m_index + 4] == self.PNG_HEADER:
                 print("Processing image...")
-                # read image and convert to grayscale
-                img = PIL.Image.open(io.BytesIO(data[6:])).convert('L')
-                # img.show()
-                im = np.array(img)
-
-                # convolve image
-                im = correlate(im, self.KERNEL)
-                # PIL.Image.fromarray(np.uint8(im * 255)).show()
-
-                # reduce image dimensions
-                im = block_reduce(im, block_size=(4, 4), func=np.average)
-                # print(im.shape)
-                # PIL.Image.fromarray(im).show()
-
-                # forward feed
-                im = im.reshape(-1)
-                outputs = genome.activate(im)
+                outputs = self._ff_screenshot(data[6:], genome)
                 decision = self.ACTIONS[outputs.index(max(outputs))]
                 # decision = random.choice(self.DECISIONS)
 
@@ -129,6 +113,29 @@ class EvaluationServer:
         # return fitness score
         print(f"Genome fitness: {fitness}")
         return fitness
+
+    def _ff_screenshot(self, png_data, genome):
+        """
+        Forward-feeds screenshot data through genome neural network.
+        """
+        # read image and convert to grayscale
+        img = PIL.Image.open(io.BytesIO(png_data)).convert('L')
+        # img.show()
+        im = np.array(img)
+
+        # convolve image
+        im = correlate(im, self.KERNEL)
+        # PIL.Image.fromarray(np.uint8(im * 255)).show()
+
+        # reduce image dimensions
+        im = block_reduce(im, block_size=(4, 4), func=np.average)
+        # print(im.shape)
+        # PIL.Image.fromarray(im).show()
+
+        # forward feed
+        im = im.reshape(-1)
+        outputs = genome.activate(im)
+        return outputs
 
     @staticmethod
     def calculate_mindex(data):
