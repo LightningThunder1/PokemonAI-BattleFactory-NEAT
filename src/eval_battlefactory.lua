@@ -99,11 +99,11 @@ local game_mode = 0x54600
 
 local function refresh_gui()
     gui.cleartext()
-	gui.drawText(85, 0, "Ally Deaths: "..ally_deaths, "#ED4C40", nil, 10, nil, nil, "right")
-	gui.drawText(85, 10, "Enemy Deaths: "..enemy_deaths, "#ED4C40", nil, 10)
-	gui.drawText(85, 20, "TTL: "..ttl, "#ED4C40", nil, 10)
-	gui.drawText(85, 30, "Battle #: "..battle_number, "#ED4C40", nil, 10)
-	gui.drawText(85, 40, "Fitness: "..fitness, "#ED4C40", nil, 10)
+	gui.drawText(150, 0, "Ally Deaths: "..ally_deaths, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 10, "Enemy Deaths: "..enemy_deaths, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 20, "TTL: "..ttl, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 30, "Battle #: "..battle_number, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 40, "Fitness: "..fitness, "#ED4C40", "#000000", 10)
 end
 
 local function death_check()
