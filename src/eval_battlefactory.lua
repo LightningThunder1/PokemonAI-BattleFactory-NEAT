@@ -269,12 +269,12 @@ end
 while true do
     comm.socketServerSend("READY")
     local server_state = comm.socketServerResponse()
+    print("Server State: "..server_state)
     if server_state == "READY" then
         -- start game loop
     	GameLoop()
     elseif server_state == "FINISHED" then
         -- Close emulator
-        comm.socketServerSend("")
         client.exit()
     end
 end

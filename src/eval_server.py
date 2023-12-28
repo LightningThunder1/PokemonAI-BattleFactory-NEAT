@@ -1,5 +1,6 @@
 import json
 import os
+import signal
 import socket
 import random
 from collections.abc import MutableMapping
@@ -46,7 +47,7 @@ class EvaluationServer:
             s.listen()
 
             # spawn agent
-            self.spawn_client()
+            client_process = self.spawn_client()
             print("Spawned emulator client.")
 
             # wait for agent to connect to socket
@@ -75,13 +76,16 @@ class EvaluationServer:
                         genome.fitness = fitness
 
                     # send finish state to client
+                    data = client.recv(1024)
                     client.sendall(self.FINISH_STATE)
                     print("\nFinished evaluating genomes.")
 
                 except Exception as e:
                     print(e)
+                    os.killpg(os.getpgid(client_process.pid), signal.SIGTERM)
 
             # close server
+            os.killpg(os.getpgid(client_process.pid), signal.SIGTERM)  # Send the signal to all the process groups
             s.shutdown(socket.SHUT_RDWR)
             s.close()
 
@@ -197,14 +201,14 @@ class EvaluationServer:
         """
         return data.find(b" ") + 1
 
-    def spawn_client(self) -> None:
+    def spawn_client(self):
         """
         Spawns the emulator process and starts the eval_client.lua script.
         :return: None
         """
-        subprocess.Popen([
+        return subprocess.Popen([
             self.EMU_PATH,
             f'--socket_port={self.PORT}',
             f'--socket_ip={self.HOST}',
             f'--lua={os.path.abspath(self.EVAL_SCRIPT)}'
-        ])
+        ], preexec_fn=os.setsid)
