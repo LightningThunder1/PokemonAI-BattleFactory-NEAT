@@ -21,18 +21,19 @@ class EvaluationServer:
     PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
     EMU_PATH = '/home/javen/Desktop/PokeDS/BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
     KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
-    ACTIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
-    EVAL_SCRIPT = None
     PNG_HEADER = b"\x89PNG"
     BF_STATE_HEADER = b"BF_STATE"
     READY_STATE = b"5 READY"
     FINISH_STATE = b"8 FINISHED"
+    FITNESS_HEADER = b"FITNESS:"
 
     def __init__(self, game_mode: str):
         if game_mode == "open_world":
             self.EVAL_SCRIPT = "./src/eval_openworld.lua"
+            self.ACTIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
         if game_mode == "battle_factory":
             self.EVAL_SCRIPT = "./src/eval_battlefactory.lua"
+            self.ACTIONS = ['B', 'A', 'Up', 'Down', 'Left', 'Right', 'Null']
 
     def eval_genomes(self, genomes: [FeedForwardNetwork]) -> None:
         """
@@ -95,12 +96,15 @@ class EvaluationServer:
             # client finished sending data
             if not data:
                 raise Exception("Connection closed before finishing evaluation.")
-            if data == self.FINISH_STATE:
-                print("Client is finished evaluating genome.")
-                break
 
             # calculate message data index
             m_index = self.calculate_mindex(data)
+
+            # is msg a fitness score?
+            if data[m_index:m_index + 8] == self.FITNESS_HEADER:
+                print("Client is finished evaluating genome.")
+                fitness = float(data[m_index + 8:])
+                break
 
             # is msg a battle factory input state?
             if data[m_index:m_index + 8] == self.BF_STATE_HEADER:

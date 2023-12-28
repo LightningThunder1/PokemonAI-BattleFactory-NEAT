@@ -241,7 +241,7 @@ function GameLoop()
     -- end game loop
     print("Finished game loop.")
     print("Fitness: "..fitness)
-    comm.socketServerSend("FINISHED")
+    comm.socketServerSend("FITNESS:"..fitness)
     return fitness
 end
 
