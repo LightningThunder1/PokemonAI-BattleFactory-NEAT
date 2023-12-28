@@ -157,7 +157,7 @@ local function is_outside()
 end
 
 local function forfeit_check()
-    return is_outside and enemy_deaths < (3 * battle_number) and has_battled == 1
+    return is_outside() and enemy_deaths < (3 * battle_number) and has_battled == 1
 end
 
 local function calculate_fitness()
