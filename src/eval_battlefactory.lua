@@ -84,6 +84,7 @@ local last_dead_ally
 local last_dead_enemy
 local gp
 local battle_number
+local round_number
 local fitness
 local has_battled
 
@@ -103,7 +104,8 @@ local function refresh_gui()
 	gui.drawText(150, 10, "Enemy Deaths: "..enemy_deaths, "#ED4C40", "#000000", 10)
 	gui.drawText(150, 20, "TTL: "..ttl, "#ED4C40", "#000000", 10)
 	gui.drawText(150, 30, "Battle #: "..battle_number, "#ED4C40", "#000000", 10)
-	gui.drawText(150, 40, "Fitness: "..fitness, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 40, "Round #: "..round_number, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 50, "Fitness: "..fitness, "#ED4C40", "#000000", 10)
 end
 
 local function death_check()
@@ -114,7 +116,7 @@ local function death_check()
     if mode == 0x0 or mode == 0x140 or mode == 0x57BC or mode == 0x290 then
     	return
     end
-    
+
     -- checking active battle pokemon for deaths
     has_battled = 1
 
@@ -145,6 +147,10 @@ local function death_check()
     end
 end
 
+local function forfeit_check()
+    return memory.read_u16_le(gp + game_mode) == 0x57BC and enemy_deaths < (3 * battle_number) and has_battled == 1
+end
+
 local function calculate_fitness()
     fitness = (enemy_deaths * enemy_deaths) + ((battle_number - 1) * 5) + has_battled
 end
@@ -160,6 +166,7 @@ function GameLoop()
     last_dead_ally = nil
     last_dead_enemy = nil
     battle_number = 1
+    round_number = 1
     fitness = 0
     has_battled = 0
 
@@ -181,9 +188,19 @@ function GameLoop()
                 print("Battle lost.")
                 break
             end
+            -- battle forfeit?
+            if forfeit_check() then
+            	print("Battle forfeit.")
+            	break
+            end
             -- battle won?
             if enemy_deaths >= (3 * battle_number) then
-                print("Battle won!")
+                print("Battle won! "..battle_number)
+                if battle_number % 7 == 0 then
+                	print("Round won! "..round_number)
+                	round_number = round_number + 1
+                	has_battled = 0
+                end
                 battle_number = battle_number + 1
             	ally_deaths = 0
             	refresh_gui()
