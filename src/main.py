@@ -20,14 +20,17 @@ class Trainer:
         p.add_reporter(neat.StdOutReporter(True))
         stats = neat.StatisticsReporter()
         p.add_reporter(stats)
-        p.add_reporter(neat.Checkpointer(5))
+        p.add_reporter(neat.Checkpointer(
+            generation_interval=5,
+            filename_prefix="./checkpoints/neat-ckpt-"
+        ))
 
         # Run for up to 300 generations.
         print("Starting run...")
-        winner = p.run(self.eval_server.eval_genomes, 1)
+        winner = p.run(self.eval_server.eval_genomes, 100)
 
         # Display the winning genome.
-        print('\nBest genome:\n{!s}'.format(winner))
+        # print('\nBest genome:\n{!s}'.format(winner))
 
         # Show output of the most fit genome against training data.
         # print('\nOutput:')

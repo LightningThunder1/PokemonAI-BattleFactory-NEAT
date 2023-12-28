@@ -190,7 +190,7 @@ function GameLoop()
 
     -- initialize global vars
     local input_keys = {}
-    ttl = 20000
+    ttl = 2500 -- 5000 -- 20000
     ally_deaths = 0
     enemy_deaths = 0
     last_dead_ally = nil
