@@ -119,6 +119,9 @@ local function death_check()
     end
 
     -- checking active battle pokemon for deaths
+    if has_battled == 0 then
+    	reset_ttl = true
+    end
     has_battled = 1
 
     -- enemy death check
@@ -178,7 +181,7 @@ local function advance_frames(instruct, cnt)
     for i=0, cnt, 1 do
         emu.frameadvance()
         joypad.set(instruct)
-        ttl = ttl - 1
+        -- ttl = ttl - 1
     end
 end
 
@@ -239,11 +242,20 @@ function GameLoop()
             while not (in_trade_menu() or in_battle_room()) do
             	advance_frames({A = "True"}, 1)
                 advance_frames({}, 5)
+                -- refresh_gui()
             end
         end
 
+        -- forward-feed next decision
+        if emu.framecount() % 55 == 0 then
+            local decision = comm.socketServerScreenShotResponse()
+            input_keys = {}
+            input_keys[decision] = "True"
+        end
+
         -- advance single frame
-        advance_frames(nil)
+        advance_frames(input_keys)
+        ttl = ttl - 1
     end
 
     -- end game loop
