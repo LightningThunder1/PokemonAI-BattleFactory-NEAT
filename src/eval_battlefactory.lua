@@ -97,7 +97,7 @@ local team_enemy = 0x3CDCC -- +0x38
 local trade_ally = 0x3BE9E -- +0x70
 local init_ally = 0x3CC5C -- +0x38
 local game_mode = 0x54600
-local init_menu = 0x62BEC
+local trade_menu = 0x62BEC
 
 local function refresh_gui()
     gui.cleartext()
@@ -148,12 +148,20 @@ local function death_check()
     end
 end
 
-local function init_trading()
-    return memory.read_u16_le(gp + init_menu) == 0x0000
+local function in_battle_room()
+    return memory.read_u16_le(gp + game_mode) == 0x290
+end
+
+local function in_trade_menu()
+    return memory.read_u16_le(gp + trade_menu) == 0x0000
 end
 
 local function is_outside()
     return memory.read_u16_le(gp + game_mode) == 0x57BC
+end
+
+local function is_trading()
+    return memory.read_u16_le(gp + game_mode) == 0x140
 end
 
 local function forfeit_check()
@@ -226,9 +234,9 @@ function GameLoop()
             end
         end
 
-        -- manually move out of starting state
-        if is_outside() then
-            while not init_trading() do
+        -- manually move out of trivial states
+        if is_outside() or is_trading() then
+            while not (in_trade_menu() or in_battle_room()) do
             	advance_frames({A = "True"}, 1)
                 advance_frames({}, 5)
             end
