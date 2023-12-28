@@ -7,9 +7,20 @@ local active_ally = 0x54598
 local active_ally_hp = active_ally + 0x4C
 local team_enemy = 0x3CDCC -- BLOCK_A
 local trade_ally = 0x3BE9E -- BLOCK_B
+
 local INIT_OFFSET = 0x3D10C
-local game_mode = 0x54600
-local trade_menu = 0x62BEC
+local MODE_OFFSET = 0x54600
+local TRADEMENU_OFFSET = 0x62BEC
+
+-- game state & game mode values
+local STATE_INIT = 0
+local STATE_BATTLE = 1
+local STATE_TRADE = 2
+local MODE_TRADE = 0x140
+local MODE_TRADEMENU = 0x0000
+local MODE_OUTSIDE = 0x57BC
+local MODE_BATTLEROOM = 0x290
+local MODE_NA = 0x0000
 
 -- orderings of shuffled pokemon data blocks from shift-values
 local SHUFFLE_ORDER = {
@@ -267,8 +278,8 @@ local function death_check()
     local reset_ttl = false
 
     -- game mode check | 0x140=trading, 0x57BC=done, 0x290=battle-room,
-    local mode = memory.read_u16_le(gp + game_mode)
-    if mode == 0x0 or mode == 0x140 or mode == 0x57BC or mode == 0x290 then
+    local mode = memory.read_u16_le(gp + MODE_OFFSET)
+    if mode == MODE_NA or mode == MODE_TRADE or mode == MODE_OUTSIDE or mode == MODE_BATTLEROOM then
     	return
     end
 
@@ -306,19 +317,19 @@ local function death_check()
 end
 
 local function in_battle_room()
-    return memory.read_u16_le(gp + game_mode) == 0x290
+    return memory.read_u16_le(gp + MODE_OFFSET) == MODE_BATTLEROOM
 end
 
 local function in_trade_menu()
-    return memory.read_u16_le(gp + trade_menu) == 0x0000
+    return memory.read_u16_le(gp + TRADEMENU_OFFSET) == MODE_TRADEMENU
 end
 
 local function is_outside()
-    return memory.read_u16_le(gp + game_mode) == 0x57BC
+    return memory.read_u16_le(gp + MODE_OFFSET) == MODE_OUTSIDE
 end
 
 local function is_trading()
-    return memory.read_u16_le(gp + game_mode) == 0x140
+    return memory.read_u16_le(gp + MODE_OFFSET) == MODE_TRADE
 end
 
 local function forfeit_check()
