@@ -97,6 +97,7 @@ local team_enemy = 0x3CDCC -- +0x38
 local trade_ally = 0x3BE9E -- +0x70
 local init_ally = 0x3CC5C -- +0x38
 local game_mode = 0x54600
+local init_menu = 0x62BEC
 
 local function refresh_gui()
     gui.cleartext()
@@ -147,12 +148,38 @@ local function death_check()
     end
 end
 
+local function init_trading()
+    return memory.read_u16_le(gp + init_menu) == 0x0000
+end
+
+local function is_outside()
+    return memory.read_u16_le(gp + game_mode) == 0x57BC
+end
+
 local function forfeit_check()
-    return memory.read_u16_le(gp + game_mode) == 0x57BC and enemy_deaths < (3 * battle_number) and has_battled == 1
+    return is_outside and enemy_deaths < (3 * battle_number) and has_battled == 1
 end
 
 local function calculate_fitness()
-    fitness = (enemy_deaths * enemy_deaths) + ((battle_number - 1) * 5) + has_battled
+    fitness = (enemy_deaths * enemy_deaths) + ((battle_number - 1) * 5) + (has_battled * round_number)
+end
+
+local function advance_frames(instructs, cnt)
+    cnt = cnt or 1
+    if instructs == nil then
+        for i=0, cnt, 1 do
+            emu.frameadvance()
+    	    ttl = ttl - 1
+        end
+    else
+        for i=0, cnt, 1 do
+        	for idx,ins in pairs(instructs) do
+                emu.frameadvance()
+                joypad.set(ins)
+                ttl = ttl - 1
+            end
+        end
+    end
 end
 
 function GameLoop()
@@ -207,10 +234,16 @@ function GameLoop()
             end
         end
 
-        -- advance frame
-        emu.frameadvance()
-        -- joypad.set(input_keys)
-        ttl = ttl - 1
+        -- manually move out of starting state
+        if is_outside() then
+            while not init_trading() do
+            	advance_frames({{A = "True"}}, 1)
+                advance_frames({{}}, 5)
+            end
+        end
+
+        -- advance single frame
+        advance_frames(nil)
     end
 
     -- end game loop
