@@ -7,27 +7,67 @@ local active_ally = 0x54598
 local active_ally_hp = active_ally + 0x4C
 local team_enemy = 0x3CDCC -- BLOCK_A
 local trade_ally = 0x3BE9E -- BLOCK_B
-local init_ally = 0x3CC5C -- BLOCK_A
+local INIT_OFFSET = 0x3D10C
 local game_mode = 0x54600
 local trade_menu = 0x62BEC
 
--- pokemon memory block offsets
-local BLOCK_A = {  -- 56 bytes
-    SIZE = 0x38,
-    ID = 0x0,
-    HELD_ITEM = 0x2,
-    MOVE1_ID = 0x4,
-    MOVE2_ID = 0x6,
-    MOVE3_ID = 0x8,
-    MOVE4_ID = 0xA,
-    ABILITY = 0x20,
+-- orderings of shuffled pokemon data blocks from shift-values
+local SHUFFLE_ORDER = {
+	["0"] = {A = 1, B = 2, C = 3, D = 4};
+	["1"] = {A = 1, B = 2, C = 4, D = 3};
+	["2"] = {A = 1, B = 3, C = 2, D = 4};
+	["3"] = {A = 1, B = 4, C = 2, D = 3};
+	["4"] = {A = 1, B = 3, C = 4, D = 2};
+	["5"] = {A = 1, B = 4, C = 3, D = 2};
+	["6"] = {A = 2, B = 1, C = 3, D = 4};
+	["7"] = {A = 2, B = 1, C = 4, D = 3};
+	["8"] = {A = 3, B = 1, C = 2, D = 4};
+	["9"] = {A = 4, B = 1, C = 2, D = 3};
+	["10"] = {A = 3, B = 1, C = 4, D = 2};
+	["11"] = {A = 4, B = 1, C = 3, D = 2};
+	["12"] = {A = 2, B = 3, C = 1, D = 4};
+	["13"] = {A = 2, B = 4, C = 1, D = 3};
+	["14"] = {A = 3, B = 2, C = 1, D = 4};
+	["15"] = {A = 4, B = 2, C = 1, D = 3};
+	["16"] = {A = 3, B = 4, C = 1, D = 2};
+	["17"] = {A = 4, B = 3, C = 1, D = 2};
+	["18"] = {A = 2, B = 3, C = 4, D = 1};
+	["19"] = {A = 2, B = 4, C = 3, D = 1};
+	["20"] = {A = 3, B = 2, C = 4, D = 1};
+	["21"] = {A = 4, B = 2, C = 3, D = 1};
+	["22"] = {A = 3, B = 4, C = 2, D = 1};
+	["23"] = {A = 4, B = 3, C = 2, D = 1};
 }
-local BLOCK_B = 1  -- 112 bytes
-local BLOCK_C = 2  --
-local BLOCK_D = 3  --
+
+-- pokemon data structure
+local POKEMON_STRUCT = {
+	ID = 0x0,
+	PID = 0x0,
+	HeldItem = 0x0,
+	Ability = 0x0,
+	Moves = {
+		["1"] = {ID = 0x0, PP = 0x0},
+		["2"] = {ID = 0x0, PP = 0x0},
+		["3"] = {ID = 0x0, PP = 0x0},
+		["4"] = {ID = 0x0, PP = 0x0},
+	},
+	IVs = {
+		HP = 0x0, ATK = 0x0, DEF = 0x0,
+		SPEED = 0x0, SPA = 0x0, SPD = 0x0,
+	},
+	EVs = {
+		HP = 0x0, ATK = 0x0, DEF = 0x0,
+		SPEED = 0x0, SPA = 0x0, SPD = 0x0,
+	},
+	Stats = {
+		Status = 0x0, Level = 0x0, EXP = 0x0,
+		HP = 0x0, MaxHP = 0x0, ATK = 0x0,
+		DEF = 0x0, SPEED = 0x0, SPA = 0x0, SPD = 0x0,
+	}
+}
 
 -- input layer data structure
-local state_struct = {
+local STATE_STRUCT = {
     Mode = 0,  -- init=0, battle=1, trade=2
     Ally1 = {},
     Ally2 = {},
@@ -40,40 +80,139 @@ local state_struct = {
     Enemy3 = {},
 }
 
--- read pokemon data
-local function read_pokemon(ptr, offsets)
-    local pk = {}
-    pk.ID = memory.read_u16_le(ptr + offsets.ID)
-    pk.HeldItem = memory.read_u16_le(ptr + offsets.HELD_ITEM)
-    pk.Ability = memory.read_u16_le(ptr + offsets.ABILITY)
-    pk.Moves = {
-        ["1"] = {
-            ID = memory.read_u16_le(ptr + offsets.MOVE1_ID),
-            -- PP = 0xF
-        };
-        ["2"] = {
-            ID = memory.read_u16_le(ptr + offsets.MOVE2_ID),
-            -- PP = 0xF
-        };
-        ["3"] = {
-            ID = memory.read_u16_le(ptr + offsets.MOVE3_ID),
-            -- PP = 0xF
-        };
-        ["4"] = {
-            ID = memory.read_u16_le(ptr + offsets.MOVE4_ID),
-            -- PP = 0xF
-        };
-    }
-    -- pk.Stats = {
-    --     HP = 0x10,
-    --     MAXHP = 0x10,
-    --     ATK = 0xF,
-    --     DEF = 0xF,
-    --     SPEED = 0xF,
-    --     SPA = 0xF,
-    --     SPD = 0xF,
-    -- }
-    return pk
+-- copy table data structures
+function table.shallow_copy(t)
+	local t2 = {}
+	for k,v in pairs(t) do
+		t2[k] = v
+	end
+	return t2
+end
+
+-- multiply 4-byte values
+local function mult32(a, b)
+	local c = a >> 16
+	local d = a % 0x10000
+	local e = b >> 16
+	local f = b % 0x10000
+	local g = (c * f + d * e) % 0x10000
+	local h = d * f
+	local i = g * 0x10000 + h
+	return i
+end
+
+-- decrypt pokemon bytes
+local function decrypt(seed, addr, words)
+	local X = { seed }
+	local D = {}
+	for n = 1, words+1, 1 do
+		X[n+1] = mult32(X[n], 0x41C64E6D) + 0x6073
+		D[n] = memory.read_u16_le(addr + ((n - 1) * 0x02))
+		D[n] = D[n] ~ (X[n+1] >> 16)
+		-- print(n, string.format("%X", D[n]))
+	end
+	return D
+end
+
+-- read encrypted pokemon data
+local function read_pokemon(ptr, party_idx)
+	-- offset pokemon pointer for party index
+	ptr = ptr + (0xEC * party_idx)
+
+	-- pokemon decryption vars
+	local pid = memory.read_u32_le(ptr + 0x0)
+	local checksum = memory.read_u16_le(ptr + 0x06)
+	local shift = tostring(((pid & 0x3E000) >> 0xD) % 24)
+	print("PID:", pid)
+	print("Checksum:", checksum)
+	print("Shift:", shift)
+
+	-- decrypt pokemon bytes
+	local D = decrypt(checksum, ptr + 0x08, 64) -- data
+	local B = decrypt(pid, ptr + 0x88, 50) -- battle stats
+
+	local function fetch_Dv(block_offset, var_offset)
+		return D[((block_offset + var_offset) / 2) + 1]
+	end
+
+	local function fetch_Bv(var_offset)
+		return B[((var_offset - 0x88) / 2) + 1]
+	end
+
+	-- calculate shuffled block offsets
+	local a_offset = (SHUFFLE_ORDER[shift]["A"] - 1) * 0x20
+	local b_offset = (SHUFFLE_ORDER[shift]["B"] - 1) * 0x20
+	local c_offset = (SHUFFLE_ORDER[shift]["C"] - 1) * 0x20
+	local d_offset = (SHUFFLE_ORDER[shift]["D"] - 1) * 0x20
+
+	-- instantiate new pokemon obj and populate vars
+	local pokemon = table.shallow_copy(POKEMON_STRUCT)
+	pokemon.ID = fetch_Dv(a_offset, 0x08 - 0x08)
+	pokemon.PID = pid
+	pokemon.HeldItem = fetch_Dv(a_offset, 0x0A - 0x08)
+	pokemon.Ability = fetch_Dv(a_offset, 0x15 - 0x08)
+	pokemon.EXP = fetch_Dv(a_offset, 0x10 - 0x08) -- TODO
+	pokemon.Moves = {
+		["1"] = {
+			ID = fetch_Dv(b_offset, 0x28 - 0x28) & 0xFFFF,
+			PP = fetch_Dv(b_offset, 0x30 - 0x28) & 0x00FF,
+		};
+		["2"] = {
+			ID = fetch_Dv(b_offset, 0x2A - 0x28) & 0xFFFF,
+			PP = (fetch_Dv(b_offset, 0x30 - 0x28) & 0xFF00) >> 8,
+		};
+		["3"] = {
+			ID = fetch_Dv(b_offset, 0x2C - 0x28) & 0xFFFF,
+			PP = fetch_Dv(b_offset, 0x32 - 0x28) & 0x00FF,
+		};
+		["4"] = {
+			ID = fetch_Dv(b_offset, 0x2E - 0x28) & 0xFFFF,
+			PP = (fetch_Dv(b_offset, 0x32 - 0x28) & 0xFF00) >> 8,
+		};
+	}
+	pokemon.IVs = {  -- TODO
+		HP = 0x0,
+		ATK = 0x0,
+		DEF = 0x0,
+		SPEED = 0x0,
+		SPA = 0x0,
+		SPD = 0x0,
+	}
+	pokemon.EVs = {
+		HP = fetch_Dv(a_offset, 0x18 - 0x08) & 0x00FF,
+		ATK = fetch_Dv(a_offset, 0x18 - 0x08) >> 8,
+		DEF = fetch_Dv(a_offset, 0x1A - 0x08) & 0x00FF,
+		SPEED = fetch_Dv(a_offset, 0x1A - 0x08) >> 8,
+		SPA = fetch_Dv(a_offset, 0x1C - 0x08) & 0x00FF,
+		SPD = fetch_Dv(a_offset, 0x1C - 0x08) >> 8,
+	}
+	pokemon.Stats = {
+		Status = fetch_Bv(0x88) & 0x00FF, -- TODO test
+		Level = fetch_Bv(0x8C) & 0x00FF,
+		HP = fetch_Bv(0x8E) & 0xFFFF,
+		MaxHP = fetch_Bv(0x90) & 0xFFFF,
+		ATK = fetch_Bv(0x92) & 0xFFFF,
+		DEF = fetch_Bv(0x94) & 0xFFFF,
+		SPEED = fetch_Bv(0x96) & 0xFFFF,
+		SPA = fetch_Bv(0x98) & 0xFFFF,
+		SPD = fetch_Bv(0x9A) & 0xFFFF,
+	}
+	return pokemon
+end
+
+local function print_pokemon(pokemon)
+    print(pokemon)
+    print("MOVES")
+    print(pokemon.Moves[1])
+    print(pokemon.Moves[2])
+    print(pokemon.Moves[3])
+    print(pokemon.Moves[4])
+    print("STATS")
+    print(pokemon.Stats)
+    print("EVs")
+    print(pokemon.EVs)
+    print("IVs")
+    print(pokemon.IVs)
 end
 
 local function serialize_table(tabl, indent)
