@@ -16,6 +16,7 @@ local TRADEMENU_OFFSET = 0x62BEC
 local STATE_INIT = 0
 local STATE_BATTLE = 1
 local STATE_TRADE = 2
+local STATE_NA = 3
 local MODE_TRADE = 0x140
 local MODE_TRADEMENU = 0x0000
 local MODE_OUTSIDE = 0x57BC
@@ -334,6 +335,18 @@ end
 
 local function forfeit_check()
     return is_outside() and enemy_deaths < (3 * battle_number) and has_battled == 1
+end
+
+local function game_state()
+	if in_trade_menu() and has_battled == 0 then
+		return STATE_INIT
+	elseif ((not is_outside()) and (not is_trading())) or in_battle_room() then
+	    return STATE_BATTLE
+	elseif is_trading() and in_trade_menu() then
+	    return STATE_TRADE
+	else
+	    return STATE_NA
+	end
 end
 
 local function calculate_fitness()
