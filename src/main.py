@@ -11,11 +11,6 @@ class Trainer:
         self.eval_server = eval_server
         self.config = config
 
-    def eval_genomes(self, genomes, config):
-        nets = [neat.nn.FeedForwardNetwork.create(genome, config) for _id, genome in genomes]
-        self.eval_server.eval_genomes(nets)
-        print("Finished evaluating genomes.")
-
     def run(self):
         # Create the population, which is the top-level object for a NEAT run.
         print("Creating initial population...")
@@ -29,7 +24,7 @@ class Trainer:
 
         # Run for up to 300 generations.
         print("Starting run...")
-        winner = p.run(self.eval_genomes, 1)
+        winner = p.run(self.eval_server.eval_genomes, 1)
 
         # Display the winning genome.
         print('\nBest genome:\n{!s}'.format(winner))

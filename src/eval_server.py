@@ -3,8 +3,8 @@ import os
 import socket
 import random
 from collections.abc import MutableMapping
-
 import PIL
+import neat
 import numpy as np
 from scipy.signal import correlate
 from skimage.measure import block_reduce
@@ -33,9 +33,9 @@ class EvaluationServer:
             self.ACTIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
         if game_mode == "battle_factory":
             self.EVAL_SCRIPT = "./src/eval_battlefactory.lua"
-            self.ACTIONS = ['B', 'A', 'Up', 'Down', 'Left', 'Right', 'Null']
+            self.ACTIONS = ['B', 'A', 'Up', 'Down', 'Left', 'Right']
 
-    def eval_genomes(self, genomes: [FeedForwardNetwork]) -> None:
+    def eval_genomes(self, genomes, config) -> None:
         """
         Evaluates a population of genomes.
         """
@@ -55,7 +55,11 @@ class EvaluationServer:
                 print(f"Connected by {addr}.")
                 try:
                     # evaluate each genome
-                    for genome in genomes:
+                    for _id, genome in genomes:
+                        # create NN from genome
+                        nn = neat.nn.FeedForwardNetwork.create(genome, config)
+                        print(f"\nGenome #: {_id}")
+
                         # wait for client to be ready
                         while True:
                             data = client.recv(1024)
@@ -67,11 +71,12 @@ class EvaluationServer:
                                 break
 
                         # begin genome evaluation
-                        fitness = self._eval(client, genome)
+                        fitness = self._eval(client, nn)
                         genome.fitness = fitness
 
                     # send finish state to client
                     client.sendall(self.FINISH_STATE)
+                    print("\nFinished evaluating genomes.")
 
                 except Exception as e:
                     print(e)
@@ -80,11 +85,11 @@ class EvaluationServer:
             s.shutdown(socket.SHUT_RDWR)
             s.close()
 
-    def _eval(self, client, genome: FeedForwardNetwork) -> float:
+    def _eval(self, client, nn: FeedForwardNetwork) -> float:
         """
         Evaluates a single genome.
         """
-        print("\nEvaluating genome...")
+        print("Evaluating genome...")
         # init fitness
         fitness = 0.0
 
@@ -120,7 +125,7 @@ class EvaluationServer:
                 # print(input_layer)
 
                 # forward feed
-                output_layer = genome.activate(input_layer)
+                output_layer = nn.activate(input_layer)
                 output_msg = "{ " + ", ".join([str(round(x, 5)) for x in output_layer]) + " }"
                 print(output_msg)
 
@@ -129,20 +134,20 @@ class EvaluationServer:
 
             # is msg a state screenshot?
             if data[m_index:m_index + 4] == self.PNG_HEADER:
-                print("Processing state screenshot...")
-                outputs = self._ff_screenshot(data[6:], genome)
+                # print("Processing state screenshot...")
+                outputs = self._ff_screenshot(data[m_index:], nn)
                 decision = self.ACTIONS[outputs.index(max(outputs))]
                 # decision = random.choice(self.DECISIONS)
 
                 # respond to client with decision
-                print(f"Decision: {decision}")
+                # print(f"Decision: {decision}")
                 client.sendall(b'' + bytes(f"{len(decision)} {decision}", 'utf-8'))
 
         # return fitness score
         print(f"Genome fitness: {fitness}")
         return fitness
 
-    def _ff_screenshot(self, png_data, genome):
+    def _ff_screenshot(self, png_data, nn):
         """
         Forward-feeds screenshot data through genome neural network.
         """
@@ -162,7 +167,7 @@ class EvaluationServer:
 
         # forward feed
         im = im.reshape(-1)
-        outputs = genome.activate(im)
+        outputs = nn.activate(im)
         return outputs
 
     @classmethod
