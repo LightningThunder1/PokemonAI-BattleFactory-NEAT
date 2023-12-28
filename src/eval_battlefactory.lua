@@ -164,21 +164,13 @@ local function calculate_fitness()
     fitness = (enemy_deaths * enemy_deaths) + ((battle_number - 1) * 5) + (has_battled * round_number)
 end
 
-local function advance_frames(instructs, cnt)
+local function advance_frames(instruct, cnt)
     cnt = cnt or 1
-    if instructs == nil then
-        for i=0, cnt, 1 do
-            emu.frameadvance()
-    	    ttl = ttl - 1
-        end
-    else
-        for i=0, cnt, 1 do
-        	for idx,ins in pairs(instructs) do
-                emu.frameadvance()
-                joypad.set(ins)
-                ttl = ttl - 1
-            end
-        end
+    instruct = instruct or {}
+    for i=0, cnt, 1 do
+        emu.frameadvance()
+        joypad.set(instruct)
+        ttl = ttl - 1
     end
 end
 
@@ -237,8 +229,8 @@ function GameLoop()
         -- manually move out of starting state
         if is_outside() then
             while not init_trading() do
-            	advance_frames({{A = "True"}}, 1)
-                advance_frames({{}}, 5)
+            	advance_frames({A = "True"}, 1)
+                advance_frames({}, 5)
             end
         end
 
