@@ -1,5 +1,31 @@
 ---@diagnostic disable: trailing-space
 
+-- global pointer offsets
+local active_enemy = 0x54658
+local active_enemy_hp = active_enemy + 0x4C
+local active_ally = 0x54598
+local active_ally_hp = active_ally + 0x4C
+local team_enemy = 0x3CDCC -- BLOCK_A
+local trade_ally = 0x3BE9E -- BLOCK_B
+local init_ally = 0x3CC5C -- BLOCK_A
+local game_mode = 0x54600
+local trade_menu = 0x62BEC
+
+-- pokemon memory block offsets
+local BLOCK_A = {  -- 56 bytes
+    SIZE = 0x38,
+    ID = 0x0,
+    HELD_ITEM = 0x2,
+    MOVE1_ID = 0x4,
+    MOVE2_ID = 0x6,
+    MOVE3_ID = 0x8,
+    MOVE4_ID = 0xA,
+    ABILITY = 0x20,
+}
+local BLOCK_B = 1  -- 112 bytes
+local BLOCK_C = 2  --
+local BLOCK_D = 3  --
+
 -- input layer data structure
 local state_struct = {
     Mode = 0,  -- init=0, battle=1, trade=2
@@ -15,38 +41,38 @@ local state_struct = {
 }
 
 -- read pokemon data
-local function read_pokemon(mode)
-    local pk = { ID=0, HeldItem=0, Ability=0, Moves={}, Stats={} }
-    pk.ID = 0x123
-    pk.HeldItem = 0x123
-    pk.Ability = 0x123
+local function read_pokemon(ptr, offsets)
+    local pk = {}
+    pk.ID = memory.read_u16_le(ptr + offsets.ID)
+    pk.HeldItem = memory.read_u16_le(ptr + offsets.HELD_ITEM)
+    pk.Ability = memory.read_u16_le(ptr + offsets.ABILITY)
     pk.Moves = {
-        Move1 = {
-            ID = 0x1,
-            PP = 0xF
+        ["1"] = {
+            ID = memory.read_u16_le(ptr + offsets.MOVE1_ID),
+            -- PP = 0xF
         };
-        Move2 = {
-            ID = 0x2,
-            PP = 0xF
+        ["2"] = {
+            ID = memory.read_u16_le(ptr + offsets.MOVE2_ID),
+            -- PP = 0xF
         };
-        Move3 = {
-            ID = 0x3,
-            PP = 0xF
+        ["3"] = {
+            ID = memory.read_u16_le(ptr + offsets.MOVE3_ID),
+            -- PP = 0xF
         };
-        Move4 = {
-            ID = 0x4,
-            PP = 0xF
+        ["4"] = {
+            ID = memory.read_u16_le(ptr + offsets.MOVE4_ID),
+            -- PP = 0xF
         };
     }
-    pk.Stats = {
-        HP = 0x10,
-        MAXHP = 0x10,
-        ATK = 0xF,
-        DEF = 0xF,
-        SPEED = 0xF,
-        SPA = 0xF,
-        SPD = 0xF,
-    }
+    -- pk.Stats = {
+    --     HP = 0x10,
+    --     MAXHP = 0x10,
+    --     ATK = 0xF,
+    --     DEF = 0xF,
+    --     SPEED = 0xF,
+    --     SPA = 0xF,
+    --     SPD = 0xF,
+    -- }
     return pk
 end
 
@@ -87,17 +113,6 @@ local battle_number
 local round_number
 local fitness
 local has_battled
-
--- pointer offsets
-local active_enemy = 0x54658
-local active_enemy_hp = active_enemy + 0x4C
-local active_ally = 0x54598
-local active_ally_hp = active_ally + 0x4C
-local team_enemy = 0x3CDCC -- +0x38
-local trade_ally = 0x3BE9E -- +0x70
-local init_ally = 0x3CC5C -- +0x38
-local game_mode = 0x54600
-local trade_menu = 0x62BEC
 
 local function refresh_gui()
     gui.cleartext()
