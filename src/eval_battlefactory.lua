@@ -399,6 +399,98 @@ local function game_state()
 	end
 end
 
+-- updates the cached inputstate from current game state memory
+local function read_inputstate()
+    input_state.State = game_state()
+
+    -- determine state pointers
+    if input_state.State == STATE_INIT then
+        -- init state
+        local allyparty_ptr = gp + ALLY_OFFSET -- encrypted party of 6
+        input_state.AllyParty = {
+            ["1"] = read_pokemon(allyparty_ptr, 0),
+            ["2"] = read_pokemon(allyparty_ptr, 1),
+            ["3"] = read_pokemon(allyparty_ptr, 2),
+            ["4"] = read_pokemon(allyparty_ptr, 3),
+            ["5"] = read_pokemon(allyparty_ptr, 4),
+            ["6"] = read_pokemon(allyparty_ptr, 5),
+        }
+        local enemyparty_ptr = gp + FUTURE_ENEMY_OFFSET -- BLOCK_A party of 3
+        input_state.EnemyParty = {
+            ["1"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 0),
+            ["2"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 1),
+            ["3"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 2),
+        }
+    elseif input_state.State == STATE_BATTLE then
+        -- battle state
+        local active_ally_ptr = gp + ACTIVE_ALLY_OFFSET
+        local active_enemy_ptr = gp + ACTIVE_ENEMY_OFFSET
+        local allyparty_ptr = gp + ALLY_OFFSET -- encrypted party of 3
+        local enemyparty_ptr = gp + ENEMY_OFFSET -- encrypted party of 3
+
+        if in_battle_room() then
+        	input_state.AllyParty = {
+                ["1"] = read_pokemon(allyparty_ptr, 0),
+                ["2"] = read_pokemon(allyparty_ptr, 1),
+                ["3"] = read_pokemon(allyparty_ptr, 2),
+                ["4"] = table.shallow_copy(POKEMON_STRUCT),
+                ["5"] = table.shallow_copy(POKEMON_STRUCT),
+                ["6"] = table.shallow_copy(POKEMON_STRUCT),
+            }
+            input_state.EnemyParty = {
+                ["1"] = read_pokemon(enemyparty_ptr, 0),
+                ["2"] = read_pokemon(enemyparty_ptr, 1),
+                ["3"] = read_pokemon(enemyparty_ptr, 2),
+            }
+        end
+        -- update active party member state
+        local active_ally = memory.read_u16_le(active_ally_ptr) -- ID only
+        local active_enemy = memory.read_u16_le(active_enemy_ptr) -- ID only
+        -- active ally
+        for k,v in pairs(input_state.AllyParty) do
+        	if v.ID == active_ally then
+        		read_unencryptedpokemon(active_ally_ptr, BLOCK_B, 0, v)
+                v.Active = 1
+        	else
+        	    v.Active = 0
+        	end
+        end
+        -- active enemy
+        for k,v in pairs(input_state.EnemyParty) do
+        	if v.ID == active_enemy then
+        		read_unencryptedpokemon(active_enemy_ptr, BLOCK_B, 0, v)
+                v.Active = 1
+        	else
+        	    v.Active = 0
+        	end
+        end
+
+    elseif input_state.State == STATE_TRADE then
+        -- trade state
+        local allyparty_ptr = gp + ALLY_OFFSET -- encrypted party of 3
+        local tradeparty_ptr = gp + ENEMY_OFFSET -- encrypted party of 3
+        input_state.AllyParty = {
+            ["1"] = read_pokemon(allyparty_ptr, 0),
+            ["2"] = read_pokemon(allyparty_ptr, 1),
+            ["3"] = read_pokemon(allyparty_ptr, 2),
+            ["4"] = read_pokemon(tradeparty_ptr, 0),
+            ["5"] = read_pokemon(tradeparty_ptr, 1),
+            ["6"] = read_pokemon(tradeparty_ptr, 2),
+        }
+        local enemyparty_ptr = gp + FUTURE_ENEMY_OFFSET -- BLOCK_A party of 3
+        input_state.EnemyParty = {
+            ["1"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 0),
+            ["2"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 1),
+            ["3"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 2),
+        }
+    else
+        -- state N/A
+        return input_state
+    end
+
+    return input_state
+end
+
 local function calculate_fitness()
     fitness = (enemy_deaths * enemy_deaths) + ((battle_number - 1) * 5) + (has_battled * round_number)
 end
