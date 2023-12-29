@@ -536,6 +536,13 @@ local function sort_by_values(tbl, sort_function)
     return keys
 end
 
+-- sends input state to server for evaluation
+local function eval_state()
+    read_inputstate()
+    comm.socketServerSend("BF_STATE"..serialize_table(input_state))  -- send state to eval server
+    return str_to_table(comm.socketServerResponse())
+end
+
 -- selects initial or trades pokemon in trade menu
 local function trade_pokemon(indices)
     local menu_index = 1
@@ -649,9 +656,7 @@ function GameLoop()
 
         -- select pokemon from trade menu
         if is_trading() and in_trade_menu() then
-            read_inputstate()
-            comm.socketServerSend("BF_STATE"..serialize_table(input_state))  -- send state to eval server
-            local output = str_to_table(comm.socketServerResponse())
+            local output = eval_state()
             output = {table.unpack(output, 5, #output)} -- slice to 6 pokemon choices
             local sorted = sort_by_values(output, function(a, b) return a > b end)  -- sort output layer
             trade_pokemon({ sorted[1], sorted[2], sorted[3] })  -- select top 3 pokemon choices
