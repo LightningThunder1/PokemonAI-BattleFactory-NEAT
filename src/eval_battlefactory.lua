@@ -676,6 +676,111 @@ local function perform_move(move_idx)
     return true
 end
 
+-- check if evaluation is finished
+local function finished_check()
+    -- battle lost?
+    if ttl <= 0 or ally_deaths >= 3 then
+        print("Battle lost: ttl="..ttl..", ally_deaths="..ally_deaths)
+        return true
+    end
+    -- battle forfeit?
+    if forfeit_check() then
+        print("Battle forfeit.")
+        return true
+    end
+    -- battle won?
+    if enemy_deaths >= (3 * battle_number) then
+        print("Battle won! "..battle_number)
+        -- round also won?
+        if battle_number % 7 == 0 then
+            print("Round won! "..round_number)
+            round_number = round_number + 1
+            has_battled = 0
+            input_state = table.shallow_copy(INPUTSTATE_STRUCT)
+        end
+        battle_number = battle_number + 1
+        ally_deaths = 0
+        refresh_gui()
+    end
+    return false
+end
+
+-- manually move out of trivial states
+local function trivial_state_check()
+    if is_outside() or is_trading() then
+        while not (in_trade_menu() or in_battle_room()) do
+            advance_frames({A = "True"}, 1)
+            advance_frames({}, 5)
+        end
+    end
+end
+
+-- select pokemon from trade menu
+local function trade_menu_check()
+    if is_trading() and in_trade_menu() then
+        local output = eval_state()
+        output = {table.unpack(output, 5, #output)} -- slice to 6 pokemon choices
+        local team_weights = sort_actions(output)  -- sort team selection weights
+        trade_pokemon({ team_weights[1], team_weights[2], team_weights[3] })  -- select top 3 pokemon choices
+    end
+end
+
+-- advance from battle-room to battle
+local function battle_room_check()
+    if in_battle_room() then
+        read_inputstate() -- encrypted enemy team now available
+        while in_battle_room() do
+            advance_frames({A = "True"}, 1)
+            advance_frames({}, 5)
+        end
+    end
+end
+
+-- make battle move if my turn
+local function battle_turn_check()
+    if is_battle_turn() then
+        -- evaluate action weights
+        local output = eval_state()
+        local action_weights = sort_actions({table.unpack(output, 1, 7)}) -- sort all relevant action weights
+        local team_weights = sort_actions({table.unpack(output, 5, 7)}) -- sort team member weights
+        -- local move_weights = sort_actions({table.unpack(output, 1, 4)}) -- sort move weights
+        print("\nAction Priorities:")
+        for k,v in ipairs(action_weights) do print(k, v) end
+
+        -- attempt to perform next best action
+        local attempt_idx = 1
+        local turn_success = false
+        while not turn_success do
+            print("Attempt_idx="..attempt_idx)
+            -- first check if active pokemon is dead
+            local active_hp = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
+            if active_hp <= 0 then
+                print("Active pokemon is dead: attempting switch to party_idx="..team_weights[attempt_idx])
+                turn_success = switch_active(team_weights[attempt_idx])
+            else
+                local action_idx = action_weights[attempt_idx]
+                print("Action_idx="..action_idx)
+
+                if action_idx <= 4 then
+                    -- move decision
+                    print("Performing move #"..action_idx)
+                    turn_success = perform_move(action_idx)
+                else
+                    -- switch decision
+                    print("Switching to party_idx="..action_idx - 4)
+                    turn_success = switch_active(action_idx - 4)
+                end
+            end
+            -- try next best action
+            attempt_idx = attempt_idx + 1
+            if attempt_idx > 7 then
+                print("Failed to perform any action!")
+                break
+            end
+        end
+    end
+end
+
 -- ####################################
 -- ####         GAME LOOP          ####
 -- ####################################
@@ -710,99 +815,15 @@ function GameLoop()
         death_check()
         calculate_fitness()
         refresh_gui()
-        -- battle lost?
-        if ttl <= 0 or ally_deaths >= 3 then
-            print("Battle lost: ttl="..ttl..", ally_deaths="..ally_deaths)
+        -- is evaluation over?
+        if finished_check() then
             break
         end
-        -- battle forfeit?
-        if forfeit_check() then
-            print("Battle forfeit.")
-            break
-        end
-        -- battle won?
-        if enemy_deaths >= (3 * battle_number) then
-            print("Battle won! "..battle_number)
-            -- round also won?
-            if battle_number % 7 == 0 then
-                print("Round won! "..round_number)
-                round_number = round_number + 1
-                has_battled = 0
-                input_state = table.shallow_copy(INPUTSTATE_STRUCT)
-            end
-            battle_number = battle_number + 1
-            ally_deaths = 0
-            refresh_gui()
-        end
-
-        -- manually move out of trivial states
-        if is_outside() or is_trading() then
-            while not (in_trade_menu() or in_battle_room()) do
-            	advance_frames({A = "True"}, 1)
-                advance_frames({}, 5)
-            end
-        end
-
-        -- select pokemon from trade menu
-        if is_trading() and in_trade_menu() then
-            local output = eval_state()
-            output = {table.unpack(output, 5, #output)} -- slice to 6 pokemon choices
-            local team_weights = sort_actions(output)  -- sort team selection weights
-            trade_pokemon({ team_weights[1], team_weights[2], team_weights[3] })  -- select top 3 pokemon choices
-        end
-
-        -- advance from battle-room to battle
-        if in_battle_room() then
-        	read_inputstate() -- encrypted enemy team now available
-        	while in_battle_room() do
-        		advance_frames({A = "True"}, 1)
-                advance_frames({}, 5)
-        	end
-        end
-
-        -- make battle move if my turn
-        if is_battle_turn() then
-            -- evaluate action weights
-        	local output = eval_state()
-        	local action_weights = sort_actions({table.unpack(output, 1, 7)}) -- sort all relevant action weights
-        	local team_weights = sort_actions({table.unpack(output, 5, 7)}) -- sort team member weights
-        	-- local move_weights = sort_actions({table.unpack(output, 1, 4)}) -- sort move weights
-        	print("\nAction Priorities:")
-        	for k,v in ipairs(action_weights) do print(k, v) end
-
-        	-- attempt to perform next best action
-        	local attempt_idx = 1
-        	local turn_success = false
-        	while not turn_success do
-        	    print("Attempt_idx="..attempt_idx)
-        		-- first check if active pokemon is dead
-        		local active_hp = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
-        		if active_hp <= 0 then
-        		    print("Active pokemon is dead: attempting switch to party_idx="..team_weights[attempt_idx])
-        			turn_success = switch_active(team_weights[attempt_idx])
-        		else
-        		    local action_idx = action_weights[attempt_idx]
-        		    print("Action_idx="..action_idx)
-
-                    if action_idx <= 4 then
-                        -- move decision
-                        print("Performing move #"..action_idx)
-                        turn_success = perform_move(action_idx)
-                    else
-                        -- switch decision
-                        print("Switching to party_idx="..action_idx - 4)
-                        turn_success = switch_active(action_idx - 4)
-                    end
-                end
-        		-- try next best action
-        		attempt_idx = attempt_idx + 1
-        		if attempt_idx > 7 then
-        			print("Failed to perform any action!")
-        			break
-        		end
-        	end
-        end
-
+        -- state advancement
+        trivial_state_check()
+        trade_menu_check()
+        battle_room_check()
+        battle_turn_check()
         -- advance single frame
         advance_frames({}, 1)
     end
