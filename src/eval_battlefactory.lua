@@ -9,6 +9,7 @@ local ENEMY_OFFSET = 0x3D6BC -- Encrypted
 local MODE_OFFSET = 0x54600
 local TRADEMENU_OFFSET = 0x62BEC
 local BATTLESTATE_OFFSET = -0x514F4
+local BATTLE_PMENU_OFFSET = TRADEMENU_OFFSET -- 0x62BEC
 
 -- game state & game mode consts
 local STATE_INIT = 0
@@ -278,7 +279,9 @@ local function read_unencryptedpokemon(ptr, offsets, party_idx, pk)
     	pk.Moves["4"].ID = memory.read_u16_le(ptr + offsets.MOVE4_ID)
     end
     if offsets == BLOCK_B then
-    	pk.HP = memory.read_u16_le(ptr + offsets.HP)
+    	pk.Stats.HP = memory.read_u16_le(ptr + offsets.HP)
+    	-- TODO pk.Stats.Status
+    	-- TODO pk.HeldItem
     	pk.Moves["1"].PP = memory.read_u8(ptr + offsets.MOVE1_PP)
     	pk.Moves["2"].PP = memory.read_u8(ptr + offsets.MOVE2_PP)
     	pk.Moves["3"].PP = memory.read_u8(ptr + offsets.MOVE3_PP)
@@ -584,6 +587,49 @@ local function trade_pokemon(indices)
     end
 end
 
+-- switch active battle pokemon to given party index, if possible
+local function switch_active(party_idx)
+    -- is the given party member dead?
+    if input_state.AllyParty[party_idx].Stats.HP <= 0 then
+    	return false
+    end
+    -- is the given party member already active?
+    if input_state.AllyParty[party_idx].Active == 1 then
+    	return false
+    end
+    local battle_state = memory.read_u8(gp + BATTLESTATE_OFFSET)
+    -- first move to party selection menu
+    if battle_state == MODE_BATTLE_TURN then
+    	advance_frames({["Right"] = "True"}, 5)
+        advance_frames({}, 1)
+        advance_frames({A = "True"}, 60)
+        advance_frames({}, 1)
+    end
+    -- find target pokemon menu index
+    local target_id = input_state.AllyParty[party_idx].ID
+    local menu_idx
+    for i=0,3,1 do
+    	local test_id = memory.read_u16_le(gp + BATTLE_PMENU_OFFSET + (0x50 * i))
+    	if test_id == target_id then
+    		menu_idx = i + 1
+    	end
+    end
+    -- reposition menu selection
+    if menu_idx == 2 then
+    	advance_frames({["Right"] = "True"}, 5)
+    elseif menu_idx == 3 then
+        advance_frames({["Down"] = "True"}, 5)
+    else
+        return false
+    end
+    -- select pokemon
+    advance_frames({}, 1)
+    advance_frames({A = "True"}, 15)
+    advance_frames({}, 1)
+    advance_frames({A = "True"}, 15)
+    return true
+end
+
 -- ####################################
 -- ####         GAME LOOP          ####
 -- ####################################
@@ -671,12 +717,24 @@ function GameLoop()
         	end
         end
 
-        -- forward-feed next decision
-        -- if emu.framecount() % 55 == 0 then
-        --    local decision = comm.socketServerScreenShotResponse()
-        --    input_keys = {}
-        --    input_keys[decision] = "True"
-        --end
+        -- make battle move if my turn
+        if is_battle_turn() then
+        	local output = eval_state()
+        	local team_weights = {table.unpack(output, 5, 7)} -- slice to 3 ally pokemon choices
+        	team_weights = sort_by_values(team_weights, function(a, b) return a > b end) -- sort by desirability
+        	for k,v in ipairs(team_weights) do print(k, v) end
+        	-- attempt to switch to most desirable pokemon
+        	local attempt_idx = 1
+            while not switch_active(team_weights[attempt_idx]) do
+            	print("Switching failed! party_idx="..attempt_idx.." , target_id="..input_state.AllyParty[attempt_idx].ID)
+            	attempt_idx = attempt_idx + 1
+            	if attempt_idx > 3 then
+            	    print("Failed to switch to any party member.")
+            		break
+            	end
+            end
+            -- TODO attempt to perform most desirable move
+        end
 
         -- advance single frame
         advance_frames(input_keys)
