@@ -203,11 +203,11 @@ local function read_pokemon(ptr, party_idx)
 
 	-- instantiate new pokemon obj and populate vars
 	local pokemon = table.shallow_copy(POKEMON_STRUCT)
-	pokemon.ID = fetch_Dv(a_offset, 0x08 - 0x08)
+	pokemon.ID = fetch_Dv(a_offset, 0x08 - 0x08) & 0x0FFF
 	pokemon.PID = pid
-	pokemon.HeldItem = fetch_Dv(a_offset, 0x0A - 0x08)
-	pokemon.Ability = fetch_Dv(a_offset, 0x15 - 0x08)
-	pokemon.EXP = fetch_Dv(a_offset, 0x10 - 0x08) -- TODO
+	pokemon.HeldItem = fetch_Dv(a_offset, 0x0A - 0x08) & 0x0FFF
+	-- pokemon.Ability = fetch_Dv(a_offset, 0x15 - 0x08)  -- TODO fix
+	-- pokemon.EXP = fetch_Dv(a_offset, 0x10 - 0x08) -- TODO
 	pokemon.Moves = {
 		["1"] = {
 			ID = fetch_Dv(b_offset, 0x28 - 0x28) & 0xFFFF,
@@ -226,21 +226,21 @@ local function read_pokemon(ptr, party_idx)
 			PP = (fetch_Dv(b_offset, 0x32 - 0x28) & 0xFF00) >> 8,
 		};
 	}
-	pokemon.IVs = {  -- TODO
-		HP = 0x0,
-		ATK = 0x0,
-		DEF = 0x0,
-		SPEED = 0x0,
-		SPA = 0x0,
-		SPD = 0x0,
-	}
+	-- pokemon.IVs = {  -- TODO
+	--	HP = 0x0,
+	--	ATK = 0x0,
+	--	DEF = 0x0,
+	--	SPEED = 0x0,
+	--	SPA = 0x0,
+	--	SPD = 0x0,
+	--}
 	pokemon.EVs = {
 		HP = fetch_Dv(a_offset, 0x18 - 0x08) & 0x00FF,
-		ATK = fetch_Dv(a_offset, 0x18 - 0x08) >> 8,
+		ATK = (fetch_Dv(a_offset, 0x18 - 0x08) & 0xFF00) >> 8,
 		DEF = fetch_Dv(a_offset, 0x1A - 0x08) & 0x00FF,
-		SPEED = fetch_Dv(a_offset, 0x1A - 0x08) >> 8,
+		SPEED = (fetch_Dv(a_offset, 0x1A - 0x08) & 0xFF00) >> 8,
 		SPA = fetch_Dv(a_offset, 0x1C - 0x08) & 0x00FF,
-		SPD = fetch_Dv(a_offset, 0x1C - 0x08) >> 8,
+		SPD = (fetch_Dv(a_offset, 0x1C - 0x08) & 0xFF00) >> 8,
 	}
 	pokemon.Stats = {
 		Status = fetch_Bv(0x88) & 0x00FF, -- TODO test
