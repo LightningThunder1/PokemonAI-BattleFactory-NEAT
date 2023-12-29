@@ -126,7 +126,6 @@ class EvaluationServer:
                 # flatten input state
                 bf_state = self.flatten_dict(bf_state)
                 input_layer = np.array(list(bf_state.values()))
-                # print(input_layer)
 
                 # forward feed
                 output_layer = nn.activate(input_layer)

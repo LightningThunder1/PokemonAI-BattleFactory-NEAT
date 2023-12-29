@@ -64,7 +64,7 @@ local SHUFFLE_ORDER = {
 -- pokemon data structure
 local POKEMON_STRUCT = {
 	ID = 0x0,
-	PID = 0x0,
+	-- PID = 0x0,
 	HeldItem = 0x0,
 	Ability = 0x0,
 	Active = 0x0,
@@ -83,9 +83,10 @@ local POKEMON_STRUCT = {
 		SPEED = 0x0, SPA = 0x0, SPD = 0x0,
 	},
 	Stats = {
-		Status = 0x0, Level = 0x0, EXP = 0x0,
+	    -- Level = 0x0, EXP = 0x0,
+		Status = 0x0, SPD = 0x0,
 		HP = 0x0, MaxHP = 0x0, ATK = 0x0,
-		DEF = 0x0, SPEED = 0x0, SPA = 0x0, SPD = 0x0,
+		DEF = 0x0, SPEED = 0x0, SPA = 0x0,
 	}
 }
 
@@ -110,6 +111,15 @@ local BLOCK_B = {  -- 192 bytes
     MOVE4_PP = 0x2F,
 }
 
+-- copy table data structures
+function table.shallow_copy(t)
+	local t2 = {}
+	for k,v in pairs(t) do
+		t2[k] = v
+	end
+	return t2
+end
+
 -- input layer data structure
 local INPUTSTATE_STRUCT = {
     State = STATE_INIT,
@@ -127,15 +137,6 @@ local INPUTSTATE_STRUCT = {
         ["3"] = table.shallow_copy(POKEMON_STRUCT),
     }
 }
-
--- copy table data structures
-function table.shallow_copy(t)
-	local t2 = {}
-	for k,v in pairs(t) do
-		t2[k] = v
-	end
-	return t2
-end
 
 -- copy table-b fields into table-a
 local function copy_into(a, b)
@@ -179,9 +180,9 @@ local function read_pokemon(ptr, party_idx)
 	local pid = memory.read_u32_le(ptr + 0x0)
 	local checksum = memory.read_u16_le(ptr + 0x06)
 	local shift = tostring(((pid & 0x3E000) >> 0xD) % 24)
-	print("PID:", pid)
-	print("Checksum:", checksum)
-	print("Shift:", shift)
+	-- print("PID:", pid)
+	-- print("Checksum:", checksum)
+	-- print("Shift:", shift)
 
 	-- decrypt pokemon bytes
 	local D = decrypt(checksum, ptr + 0x08, 64) -- data
@@ -204,7 +205,7 @@ local function read_pokemon(ptr, party_idx)
 	-- instantiate new pokemon obj and populate vars
 	local pokemon = table.shallow_copy(POKEMON_STRUCT)
 	pokemon.ID = fetch_Dv(a_offset, 0x08 - 0x08) & 0x0FFF
-	pokemon.PID = pid
+	-- pokemon.PID = pid
 	pokemon.HeldItem = fetch_Dv(a_offset, 0x0A - 0x08) & 0x0FFF
 	-- pokemon.Ability = fetch_Dv(a_offset, 0x15 - 0x08)  -- TODO fix
 	-- pokemon.EXP = fetch_Dv(a_offset, 0x10 - 0x08) -- TODO
@@ -244,7 +245,7 @@ local function read_pokemon(ptr, party_idx)
 	}
 	pokemon.Stats = {
 		Status = fetch_Bv(0x88) & 0x00FF, -- TODO test
-		Level = fetch_Bv(0x8C) & 0x00FF,
+		-- Level = fetch_Bv(0x8C) & 0x00FF,
 		HP = fetch_Bv(0x8E) & 0xFFFF,
 		MaxHP = fetch_Bv(0x90) & 0xFFFF,
 		ATK = fetch_Bv(0x92) & 0xFFFF,
@@ -264,7 +265,7 @@ local function read_unencryptedpokemon(ptr, offsets, party_idx, pk)
     pk.ID = memory.read_u16_le(ptr + offsets.ID)
     if offsets == BLOCK_A then
         pk.HeldItem = memory.read_u16_le(ptr + offsets.HELD_ITEM)
-    	pk.Ability = memory.read_u16_le(ptr + offsets.ABILITY)
+    	pk.Ability = memory.read_u8(ptr + offsets.ABILITY)
     	pk.Moves["1"].ID = memory.read_u16_le(ptr + offsets.MOVE1_ID)
     	pk.Moves["2"].ID = memory.read_u16_le(ptr + offsets.MOVE2_ID)
     	pk.Moves["3"].ID = memory.read_u16_le(ptr + offsets.MOVE3_ID)
@@ -272,10 +273,10 @@ local function read_unencryptedpokemon(ptr, offsets, party_idx, pk)
     end
     if offsets == BLOCK_B then
     	pk.HP = memory.read_u16_le(ptr + offsets.HP)
-    	pk.Moves["1"].PP = memory.read_u16_le(ptr + offsets.MOVE1_PP)
-    	pk.Moves["2"].PP = memory.read_u16_le(ptr + offsets.MOVE2_PP)
-    	pk.Moves["3"].PP = memory.read_u16_le(ptr + offsets.MOVE3_PP)
-    	pk.Moves["4"].PP = memory.read_u16_le(ptr + offsets.MOVE4_PP)
+    	pk.Moves["1"].PP = memory.read_u8(ptr + offsets.MOVE1_PP)
+    	pk.Moves["2"].PP = memory.read_u8(ptr + offsets.MOVE2_PP)
+    	pk.Moves["3"].PP = memory.read_u8(ptr + offsets.MOVE3_PP)
+    	pk.Moves["4"].PP = memory.read_u8(ptr + offsets.MOVE4_PP)
     end
     return pk
 end
@@ -291,8 +292,8 @@ local function print_pokemon(pokemon)
     print(pokemon.Stats)
     print("EVs")
     print(pokemon.EVs)
-    print("IVs")
-    print(pokemon.IVs)
+    -- print("IVs")
+    -- print(pokemon.IVs)
 end
 
 local function serialize_table(tabl, indent)
@@ -554,10 +555,12 @@ function GameLoop()
             -- battle won?
             if enemy_deaths >= (3 * battle_number) then
                 print("Battle won! "..battle_number)
+                -- round also won?
                 if battle_number % 7 == 0 then
                 	print("Round won! "..round_number)
                 	round_number = round_number + 1
                 	has_battled = 0
+                	input_state = table.shallow_copy(INPUTSTATE_STRUCT)
                 end
                 battle_number = battle_number + 1
             	ally_deaths = 0
@@ -570,16 +573,31 @@ function GameLoop()
             while not (in_trade_menu() or in_battle_room()) do
             	advance_frames({A = "True"}, 1)
                 advance_frames({}, 5)
-                -- refresh_gui()
             end
         end
 
-        -- forward-feed next decision
-        if emu.framecount() % 55 == 0 then
-            local decision = comm.socketServerScreenShotResponse()
-            input_keys = {}
-            input_keys[decision] = "True"
+        -- select pokemon from trade menu
+        if in_trade_menu() then
+            read_inputstate()
+            comm.socketServerSend("BF_STATE"..serialize_table(input_state))
+            local decision = comm.socketServerResponse()
         end
+
+        -- advance from battle-room to battle
+        if in_battle_room() then
+        	read_inputstate() -- encrypted enemy team now available
+        	while in_battle_room() do
+        		advance_frames({A = "True"}, 1)
+                advance_frames({}, 5)
+        	end
+        end
+
+        -- forward-feed next decision
+        -- if emu.framecount() % 55 == 0 then
+        --    local decision = comm.socketServerScreenShotResponse()
+        --    input_keys = {}
+        --    input_keys[decision] = "True"
+        --end
 
         -- advance single frame
         advance_frames(input_keys)
