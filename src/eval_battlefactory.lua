@@ -367,7 +367,7 @@ local function death_check()
     	reset_ttl = true
     	print("Enemy died! enemy_id="..enemy.ID..", last_dead="..last_dead_enemy..", enemy_deaths="..enemy_deaths)
     	last_dead_enemy = enemy.ID
-    	advance_frames({}, 200) -- buffer while next enemy loads into memory
+    	advance_frames({}, 350) -- buffer while next enemy loads into memory
     end
 
     -- ally death check
