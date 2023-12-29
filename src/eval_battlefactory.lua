@@ -1,18 +1,15 @@
 ---@diagnostic disable: trailing-space
 
 -- global pointer offsets
-local active_enemy = 0x54658
-local active_enemy_hp = active_enemy + 0x4C
-local active_ally = 0x54598
-local active_ally_hp = active_ally + 0x4C
-local team_enemy = 0x3CDCC -- BLOCK_A
-local trade_ally = 0x3BE9E -- BLOCK_B
-
-local INIT_OFFSET = 0x3D10C
+local ACTIVE_ENEMY_OFFSET = 0x54658 -- BLOCK_B
+local ACTIVE_ALLY_OFFSET = 0x54598 -- BLOCK_B
+local FUTURE_ENEMY_OFFSET = 0x3CDCC -- BLOCK_A
+local ALLY_OFFSET = 0x3D10C  -- Encrypted
+local ENEMY_OFFSET = 0x3D6BC -- Encrypted
 local MODE_OFFSET = 0x54600
 local TRADEMENU_OFFSET = 0x62BEC
 
--- game state & game mode values
+-- game state & game mode consts
 local STATE_INIT = 0
 local STATE_BATTLE = 1
 local STATE_TRADE = 2
@@ -76,6 +73,27 @@ local POKEMON_STRUCT = {
 		HP = 0x0, MaxHP = 0x0, ATK = 0x0,
 		DEF = 0x0, SPEED = 0x0, SPA = 0x0, SPD = 0x0,
 	}
+}
+
+-- unencrypted pokemon memory block offsets
+local BLOCK_A = {  -- 56 bytes
+    SIZE = 0x38,
+    ID = 0x0,
+    HELD_ITEM = 0x2,
+    MOVE1_ID = 0x4,
+    MOVE2_ID = 0x6,
+    MOVE3_ID = 0x8,
+    MOVE4_ID = 0xA,
+    ABILITY = 0x20,
+}
+local BLOCK_B = {  -- 192 bytes
+    SIZE = 0xC0,
+    ID = 0x0,
+    HP = 0x4C,
+    MOVE1_PP = 0x2C,
+    MOVE2_PP = 0x2D,
+    MOVE3_PP = 0x2E,
+    MOVE4_PP = 0x2F,
 }
 
 -- input layer data structure
@@ -291,8 +309,8 @@ local function death_check()
     has_battled = 1
 
     -- enemy death check
-    local enemy_id = memory.read_u16_le(gp + active_enemy)
-    local enemy_hp = memory.read_u16_le(gp + active_enemy_hp)
+    local enemy_id = memory.read_u16_le(gp + ACTIVE_ENEMY_OFFSET)
+    local enemy_hp = memory.read_u16_le(gp + ACTIVE_ENEMY_OFFSET + BLOCK_B.HP)
     if enemy_id ~= 0x0 and enemy_id ~= last_dead_enemy and enemy_hp <= 0x0 then
     	enemy_deaths = enemy_deaths + 1
     	last_dead_enemy = enemy_id
@@ -301,8 +319,8 @@ local function death_check()
     end
 
     -- ally death check
-    local ally_id = memory.read_u16_le(gp + active_ally)
-    local ally_hp = memory.read_u16_le(gp + active_ally_hp)
+    local ally_id = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET)
+    local ally_hp = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
     if ally_id ~= 0x0 and ally_id ~= last_dead_ally and ally_hp <= 0x0 then
     	ally_deaths = ally_deaths + 1
     	last_dead_ally = ally_id
