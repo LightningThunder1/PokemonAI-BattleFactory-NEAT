@@ -137,6 +137,14 @@ function table.shallow_copy(t)
 	return t2
 end
 
+-- copy table-b fields into table-a
+local function copy_into(a, b)
+    for k,v in pairs(b) do
+    	a[k] = v
+    end
+    return a
+end
+
 -- multiply 4-byte values
 local function mult32(a, b)
 	local c = a >> 16
