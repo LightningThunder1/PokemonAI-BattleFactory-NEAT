@@ -256,6 +256,30 @@ local function read_pokemon(ptr, party_idx)
 	return pokemon
 end
 
+-- reads unencrypted pokemon data from memory
+local function read_unencryptedpokemon(ptr, offsets, party_idx, pk)
+	ptr = ptr + (offsets.SIZE * party_idx) -- offset pokemon pointer for party index
+    pk = pk or table.shallow_copy(POKEMON_STRUCT) -- use existing pokemon or create new one
+
+    pk.ID = memory.read_u16_le(ptr + offsets.ID)
+    if offsets == BLOCK_A then
+        pk.HeldItem = memory.read_u16_le(ptr + offsets.HELD_ITEM)
+    	pk.Ability = memory.read_u16_le(ptr + offsets.ABILITY)
+    	pk.Moves["1"].ID = memory.read_u16_le(ptr + offsets.MOVE1_ID)
+    	pk.Moves["2"].ID = memory.read_u16_le(ptr + offsets.MOVE2_ID)
+    	pk.Moves["3"].ID = memory.read_u16_le(ptr + offsets.MOVE3_ID)
+    	pk.Moves["4"].ID = memory.read_u16_le(ptr + offsets.MOVE4_ID)
+    end
+    if offsets == BLOCK_B then
+    	pk.HP = memory.read_u16_le(ptr + offsets.HP)
+    	pk.Moves["1"].PP = memory.read_u16_le(ptr + offsets.MOVE1_PP)
+    	pk.Moves["2"].PP = memory.read_u16_le(ptr + offsets.MOVE2_PP)
+    	pk.Moves["3"].PP = memory.read_u16_le(ptr + offsets.MOVE3_PP)
+    	pk.Moves["4"].PP = memory.read_u16_le(ptr + offsets.MOVE4_PP)
+    end
+    return pk
+end
+
 local function print_pokemon(pokemon)
     print(pokemon)
     print("MOVES")
