@@ -336,6 +336,7 @@ local function refresh_gui()
 end
 
 local function death_check()
+    -- TODO FIX DOUBLE DEATH COUNT BUG
     local reset_ttl = false
 
     -- game mode check | 0x140=trading, 0x57BC=done, 0x290=battle-room,
@@ -539,6 +540,10 @@ local function sort_by_values(tbl, sort_function)
     return keys
 end
 
+local function sort_actions(weights)
+    return sort_by_values(weights, function(a, b) return a > b end)
+end
+
 -- sends input state to server for evaluation
 local function eval_state()
     read_inputstate()
@@ -592,12 +597,17 @@ local function switch_active(party_idx)
     party_idx = tostring(party_idx)
     -- is the given party member dead?
     if input_state.AllyParty[party_idx].Stats.HP <= 0 then
-        print("Party member #"..party_idx.." is dead!")
+        print("Failed to switch: Party member #"..party_idx.." is already dead!")
+        advance_frames({}, 1)
+        advance_frames({B = "True"}, 20)
+        advance_frames({}, 1)
+        advance_frames({B = "True"}, 20)
+        advance_frames({}, 1)
     	return false
     end
     -- is the given party member already active?
     if input_state.AllyParty[party_idx].Active == 1 then
-        print("Party member #"..party_idx.." is already active!")
+        print("Failed to switch: Party member #"..party_idx.." is already active!")
     	return false
     end
     local battle_state = memory.read_u8(gp + BATTLESTATE_OFFSET)
@@ -610,6 +620,7 @@ local function switch_active(party_idx)
         advance_frames({}, 1)
     end
     -- find target pokemon menu index
+    print("Attempting to find party member #"..party_idx.." menu index...")
     local target_id = input_state.AllyParty[party_idx].ID
     local menu_idx = 0
     for i=0,2,1 do
@@ -636,6 +647,35 @@ local function switch_active(party_idx)
     advance_frames({}, 1)
     advance_frames({A = "True"}, 15)
     advance_frames({}, 250) -- buffer while pokemon switches in
+    return true
+end
+
+local function perform_move(move_idx)
+    move_idx = tostring(move_idx)
+    -- advance into move menu
+    advance_frames({}, 100)  -- buffer while main battle menu loads
+    advance_frames({A = "True"}, 20)
+    advance_frames({}, 1)
+    -- reposition to chosen move
+    if move_idx == 2 then
+    	advance_frames({["Right"] = "True"}, 5)
+    elseif move_idx == 3 then
+        advance_frames({["Down"] = "True"}, 5)
+    elseif move_idx == 4 then
+        advance_frames({["Right"] = "True"}, 5)
+        advance_frames({}, 1)
+        advance_frames({["Down"] = "True"}, 5)
+    end
+    -- select chosen move
+    advance_frames({}, 1)
+    advance_frames({A = "True"}, 20)
+    advance_frames({}, 1)
+    -- buffer while move is performed
+    advance_frames({}, 50)
+    -- did the move fail?
+    if is_battle_turn() then
+    	return false
+    end
     return true
 end
 
@@ -713,8 +753,8 @@ function GameLoop()
         if is_trading() and in_trade_menu() then
             local output = eval_state()
             output = {table.unpack(output, 5, #output)} -- slice to 6 pokemon choices
-            local sorted = sort_by_values(output, function(a, b) return a > b end)  -- sort output layer
-            trade_pokemon({ sorted[1], sorted[2], sorted[3] })  -- select top 3 pokemon choices
+            local team_weights = sort_actions(output)  -- sort team selection weights
+            trade_pokemon({ team_weights[1], team_weights[2], team_weights[3] })  -- select top 3 pokemon choices
         end
 
         -- advance from battle-room to battle
@@ -728,22 +768,44 @@ function GameLoop()
 
         -- make battle move if my turn
         if is_battle_turn() then
+            -- evaluate action weights
         	local output = eval_state()
-        	local team_weights = {table.unpack(output, 5, 7)} -- slice to 3 ally pokemon choices
-        	team_weights = sort_by_values(team_weights, function(a, b) return a > b end) -- sort by desirability
-        	-- for k,v in ipairs(team_weights) do print(k, v) end
-        	-- attempt to switch to most desirable pokemon
+        	local action_weights = sort_actions({table.unpack(output, 1, 7)}) -- sort all relevant action weights
+        	local team_weights = sort_actions({table.unpack(output, 5, 7)}) -- sort team member weights
+        	-- local move_weights = sort_actions({table.unpack(output, 1, 4)}) -- sort move weights
+        	print("Action priorities:")
+        	for k,v in ipairs(action_weights) do print(k, v) end
+
+        	-- attempt to perform next best action
         	local attempt_idx = 1
-            while not switch_active(team_weights[attempt_idx]) do
-                local party_idx = tostring(team_weights[attempt_idx])
-            	print("Switching failed! party_idx="..party_idx.." , target_id="..input_state.AllyParty[party_idx].ID)
-            	attempt_idx = attempt_idx + 1
-            	if attempt_idx > 3 then
-            	    print("Failed to switch to any party member.")
-            		break
-            	end
-            end
-            -- TODO attempt to perform most desirable move
+        	local turn_success = false
+        	while not turn_success do
+        		-- first check if active pokemon is dead
+        		local active_hp = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
+        		if active_hp <= 0 then
+        		    print("Active pokemon is dead: attempt_idx="..attempt_idx..", party_idx="..team_weights[attempt_idx])
+        			turn_success = switch_active(team_weights[attempt_idx])
+        		else
+        		    local action_idx = action_weights[attempt_idx]
+        		    print("Action attempt: "..attempt_idx, "Action index#"..action_idx)
+
+                    if action_idx <= 4 then
+                        -- move decision
+                        print("Performing move #"..action_idx)
+                        turn_success = perform_move(action_idx)
+                    else
+                        -- switch decision
+                        print("Switching to party member #"..action_idx - 4)
+                        turn_success = switch_active(action_idx - 4)
+                    end
+                end
+        		-- try next best action
+        		attempt_idx = attempt_idx + 1
+        		if attempt_idx > 7 then
+        			print("Failed to perform any action!")
+        			break
+        		end
+        	end
         end
 
         -- advance single frame
