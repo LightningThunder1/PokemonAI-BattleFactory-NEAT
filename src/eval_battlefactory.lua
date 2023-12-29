@@ -111,17 +111,21 @@ local BLOCK_B = {  -- 192 bytes
 }
 
 -- input layer data structure
-local STATE_STRUCT = {
-    Mode = 0,  -- init=0, battle=1, trade=2
-    Ally1 = {},
-    Ally2 = {},
-    Ally3 = {},
-    Ally4 = {},
-    Ally5 = {},
-    Ally6 = {},
-    Enemy1 = {},
-    Enemy2 = {},
-    Enemy3 = {},
+local INPUTSTATE_STRUCT = {
+    State = STATE_INIT,
+    AllyParty = {
+        ["1"] = table.shallow_copy(POKEMON_STRUCT),
+        ["2"] = table.shallow_copy(POKEMON_STRUCT),
+        ["3"] = table.shallow_copy(POKEMON_STRUCT),
+        ["4"] = table.shallow_copy(POKEMON_STRUCT),
+        ["5"] = table.shallow_copy(POKEMON_STRUCT),
+        ["6"] = table.shallow_copy(POKEMON_STRUCT),
+    },
+    EnemyParty = {
+        ["1"] = table.shallow_copy(POKEMON_STRUCT),
+        ["2"] = table.shallow_copy(POKEMON_STRUCT),
+        ["3"] = table.shallow_copy(POKEMON_STRUCT),
+    }
 }
 
 -- copy table data structures
@@ -398,6 +402,7 @@ function GameLoop()
     round_number = 1
     fitness = 0
     has_battled = 0
+    input_state = table.shallow_copy(INPUTSTATE_STRUCT)
 
     -- load save state
     print("Loading save slot 1...")
