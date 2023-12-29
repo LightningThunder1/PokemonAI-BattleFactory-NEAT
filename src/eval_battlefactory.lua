@@ -8,6 +8,7 @@ local ALLY_OFFSET = 0x3D10C  -- Encrypted
 local ENEMY_OFFSET = 0x3D6BC -- Encrypted
 local MODE_OFFSET = 0x54600
 local TRADEMENU_OFFSET = 0x62BEC
+local BATTLESTATE_OFFSET = -0x514F4
 
 -- game state & game mode consts
 local STATE_INIT = 0
@@ -19,6 +20,8 @@ local MODE_TRADEMENU = 0x0000
 local MODE_OUTSIDE = 0x57BC
 local MODE_BATTLEROOM = 0x290
 local MODE_NA = 0x0000
+local MODE_BATTLE_TURN = 0x1
+local MODE_BATTLE_PMENU = 0x97
 
 -- neural network consts
 local ACTIONS = {'Move1', 'Move2', 'Move3', 'Move4', 'Poke1', 'Poke2', 'Poke3', 'Poke4', 'Poke5', 'Poke6'}
@@ -369,6 +372,11 @@ local function death_check()
     	ttl = ttl + 5000
     	print("Refreshed TTL: "..ttl)
     end
+end
+
+local function is_battle_turn()
+    local battle_state = memory.read_u8(gp + BATTLESTATE_OFFSET)
+    return battle_state == MODE_BATTLE_TURN or battle_state == MODE_BATTLE_PMENU
 end
 
 local function in_battle_room()
