@@ -112,6 +112,7 @@ local BLOCK_B = {  -- 192 bytes
     SIZE = 0xC0,
     ID = 0x0,
     HP = 0x4C,
+    MAXHP = 0x50,
     MOVE1_PP = 0x2C,
     MOVE2_PP = 0x2D,
     MOVE3_PP = 0x2E,
@@ -265,7 +266,8 @@ local function read_pokemon(ptr, party_idx)
 end
 
 -- reads unencrypted pokemon data from memory
-local function read_unencryptedpokemon(ptr, offsets, party_idx, pk)
+local function read_unencrypted_pokemon(ptr, offsets, party_idx, pk)
+    party_idx = party_idx or 0
 	ptr = ptr + (offsets.SIZE * party_idx) -- offset pokemon pointer for party index
     pk = pk or table.shallow_copy(POKEMON_STRUCT) -- use existing pokemon or create new one
 
@@ -280,6 +282,7 @@ local function read_unencryptedpokemon(ptr, offsets, party_idx, pk)
     end
     if offsets == BLOCK_B then
     	pk.Stats.HP = memory.read_u16_le(ptr + offsets.HP)
+    	pk.Stats.MaxHP = memory.read_u16_le(ptr + offsets.MAXHP)
     	-- TODO pk.Stats.Status
     	-- TODO pk.HeldItem
     	pk.Moves["1"].PP = memory.read_u8(ptr + offsets.MOVE1_PP)
@@ -305,6 +308,27 @@ local function print_pokemon(pokemon)
     -- print(pokemon.IVs)
 end
 
+local function refresh_gui()
+    gui.cleartext()
+	gui.drawText(150, 0, "Ally Deaths: "..ally_deaths, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 10, "Enemy Deaths: "..enemy_deaths, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 20, "TTL: "..ttl, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 30, "Battle #: "..battle_number, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 40, "Round #: "..round_number, "#ED4C40", "#000000", 10)
+	gui.drawText(150, 50, "Fitness: "..fitness, "#ED4C40", "#000000", 10)
+end
+
+local function advance_frames(instruct, cnt)
+    cnt = cnt or 1
+    instruct = instruct or {}
+    for i=0, cnt, 1 do
+        emu.frameadvance()
+        joypad.set(instruct)
+        ttl = ttl - 1
+        refresh_gui()
+    end
+end
+
 local function serialize_table(tabl, indent)
     local nl = string.char(10) -- newline
     indent = indent and (indent.."  ") or ""
@@ -325,56 +349,39 @@ local function serialize_table(tabl, indent)
     return str
 end
 
-local function refresh_gui()
-    gui.cleartext()
-	gui.drawText(150, 0, "Ally Deaths: "..ally_deaths, "#ED4C40", "#000000", 10)
-	gui.drawText(150, 10, "Enemy Deaths: "..enemy_deaths, "#ED4C40", "#000000", 10)
-	gui.drawText(150, 20, "TTL: "..ttl, "#ED4C40", "#000000", 10)
-	gui.drawText(150, 30, "Battle #: "..battle_number, "#ED4C40", "#000000", 10)
-	gui.drawText(150, 40, "Round #: "..round_number, "#ED4C40", "#000000", 10)
-	gui.drawText(150, 50, "Fitness: "..fitness, "#ED4C40", "#000000", 10)
-end
-
 local function death_check()
-    -- TODO FIX DOUBLE DEATH COUNT BUG
-    local reset_ttl = false
-
-    -- game mode check | 0x140=trading, 0x57BC=done, 0x290=battle-room,
+    -- game mode check TODO replace with BATTLE_STATE?
     local mode = memory.read_u16_le(gp + MODE_OFFSET)
     if mode == MODE_NA or mode == MODE_TRADE or mode == MODE_OUTSIDE or mode == MODE_BATTLEROOM then
     	return
     end
 
-    -- checking active battle pokemon for deaths
-    if has_battled == 0 then
-    	reset_ttl = true
-    end
+    -- check active battle pokemon for deaths
+    local reset_ttl = false
     has_battled = 1
 
     -- enemy death check
-    local enemy_id = memory.read_u16_le(gp + ACTIVE_ENEMY_OFFSET)
-    local enemy_hp = memory.read_u16_le(gp + ACTIVE_ENEMY_OFFSET + BLOCK_B.HP)
-    if enemy_id ~= 0x0 and enemy_id ~= last_dead_enemy and enemy_hp <= 0x0 then
+    local enemy = read_unencrypted_pokemon(gp + ACTIVE_ENEMY_OFFSET, BLOCK_B)
+    if enemy.ID ~= 0x0 and enemy.ID ~= last_dead_enemy and enemy.Stats.HP <= 0x0 then
     	enemy_deaths = enemy_deaths + 1
-    	last_dead_enemy = enemy_id
     	reset_ttl = true
-    	print("Enemy died! "..enemy_deaths)
+    	print("Enemy died! enemy_id="..enemy.ID..", last_dead="..last_dead_enemy..", enemy_deaths="..enemy_deaths)
+    	last_dead_enemy = enemy.ID
+    	advance_frames({}, 200) -- buffer while next enemy loads into memory
     end
 
     -- ally death check
-    local ally_id = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET)
-    local ally_hp = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
-    if ally_id ~= 0x0 and ally_id ~= last_dead_ally and ally_hp <= 0x0 then
+    local ally = read_unencrypted_pokemon(gp + ACTIVE_ALLY_OFFSET, BLOCK_B)
+    if ally.ID ~= 0x0 and ally.ID ~= last_dead_ally and ally.Stats.HP <= 0x0 then
     	ally_deaths = ally_deaths + 1
-    	last_dead_ally = ally_id
     	reset_ttl = true
-    	print("Ally Died! "..ally_deaths)
+    	print("Ally died! ally_id="..ally.ID..", last_dead="..last_dead_ally..", ally_deaths="..ally_deaths)
+    	last_dead_ally = ally.ID
     end
 
     -- reset TTL?
     if reset_ttl then
     	ttl = ttl + 5000
-    	print("Refreshed TTL: "..ttl)
     end
 end
 
@@ -433,9 +440,9 @@ local function read_inputstate()
         }
         local enemyparty_ptr = gp + FUTURE_ENEMY_OFFSET -- BLOCK_A party of 3
         input_state.EnemyParty = {
-            ["1"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 0),
-            ["2"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 1),
-            ["3"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 2),
+            ["1"] = read_unencrypted_pokemon(enemyparty_ptr, BLOCK_A, 0),
+            ["2"] = read_unencrypted_pokemon(enemyparty_ptr, BLOCK_A, 1),
+            ["3"] = read_unencrypted_pokemon(enemyparty_ptr, BLOCK_A, 2),
         }
     elseif input_state.State == STATE_BATTLE then
         -- battle state
@@ -465,7 +472,7 @@ local function read_inputstate()
         -- active ally
         for k,v in pairs(input_state.AllyParty) do
         	if v.ID == active_ally then
-        		read_unencryptedpokemon(active_ally_ptr, BLOCK_B, 0, v)
+        		read_unencrypted_pokemon(active_ally_ptr, BLOCK_B, 0, v)
                 v.Active = 1
         	else
         	    v.Active = 0
@@ -474,7 +481,7 @@ local function read_inputstate()
         -- active enemy
         for k,v in pairs(input_state.EnemyParty) do
         	if v.ID == active_enemy then
-        		read_unencryptedpokemon(active_enemy_ptr, BLOCK_B, 0, v)
+        		read_unencrypted_pokemon(active_enemy_ptr, BLOCK_B, 0, v)
                 v.Active = 1
         	else
         	    v.Active = 0
@@ -495,9 +502,9 @@ local function read_inputstate()
         }
         local enemyparty_ptr = gp + FUTURE_ENEMY_OFFSET -- BLOCK_A party of 3
         input_state.EnemyParty = {
-            ["1"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 0),
-            ["2"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 1),
-            ["3"] = read_unencryptedpokemon(enemyparty_ptr, BLOCK_A, 2),
+            ["1"] = read_unencrypted_pokemon(enemyparty_ptr, BLOCK_A, 0),
+            ["2"] = read_unencrypted_pokemon(enemyparty_ptr, BLOCK_A, 1),
+            ["3"] = read_unencrypted_pokemon(enemyparty_ptr, BLOCK_A, 2),
         }
     else
         -- state N/A
@@ -508,17 +515,7 @@ local function read_inputstate()
 end
 
 local function calculate_fitness()
-    fitness = (enemy_deaths * enemy_deaths) + ((battle_number - 1) * 5) + (has_battled * round_number)
-end
-
-local function advance_frames(instruct, cnt)
-    cnt = cnt or 1
-    instruct = instruct or {}
-    for i=0, cnt, 1 do
-        emu.frameadvance()
-        joypad.set(instruct)
-        -- ttl = ttl - 1
-    end
+    fitness = (enemy_deaths * enemy_deaths) + ((battle_number - 1) * 2.5) + ((round_number - 1) * 5.0)
 end
 
 local function str_to_table(str)
@@ -597,7 +594,7 @@ local function switch_active(party_idx)
     party_idx = tostring(party_idx)
     -- is the given party member dead?
     if input_state.AllyParty[party_idx].Stats.HP <= 0 then
-        print("Failed to switch: Party member #"..party_idx.." is already dead!")
+        print("Failed to switch: party_idx="..party_idx.." is already dead!")
         advance_frames({}, 1)
         advance_frames({B = "True"}, 20)
         advance_frames({}, 1)
@@ -607,7 +604,7 @@ local function switch_active(party_idx)
     end
     -- is the given party member already active?
     if input_state.AllyParty[party_idx].Active == 1 then
-        print("Failed to switch: Party member #"..party_idx.." is already active!")
+        print("Failed to switch: party_idx="..party_idx.." is already active!")
     	return false
     end
     local battle_state = memory.read_u8(gp + BATTLESTATE_OFFSET)
@@ -620,7 +617,7 @@ local function switch_active(party_idx)
         advance_frames({}, 1)
     end
     -- find target pokemon menu index
-    print("Attempting to find party member #"..party_idx.." menu index...")
+    print("Attempting to find menu_idx of party_idx="..party_idx)
     local target_id = input_state.AllyParty[party_idx].ID
     local menu_idx = 0
     for i=0,2,1 do
@@ -636,10 +633,10 @@ local function switch_active(party_idx)
     elseif menu_idx == 3 then
         advance_frames({["Down"] = "True"}, 5)
     elseif menu_idx == 1 then
-        print("Party member #"..party_idx.." is already active! menu_idx="..menu_idx)
+        print("Failed to switch: party_idx="..party_idx.." is already active! (menu_idx=1)")
         return false
     else
-        print("Failed to find menu_idx for party member #"..party_idx)
+        print("Failed to switch: could not find menu_idx for party_idx="..party_idx)
     end
     -- select pokemon
     advance_frames({}, 1)
@@ -690,15 +687,14 @@ function GameLoop()
     print("Beginning game loop...")
 
     -- initialize global vars
-    local input_keys = {}
-    ttl = 2500 -- 5000 -- 20000
+    ttl = 15000 -- 20000
     ally_deaths = 0
     enemy_deaths = 0
-    last_dead_ally = nil
-    last_dead_enemy = nil
+    last_dead_ally = 0x0
+    last_dead_enemy = 0x0
     battle_number = 1
     round_number = 1
-    fitness = 0
+    fitness = 0.0
     has_battled = 0
     input_state = table.shallow_copy(INPUTSTATE_STRUCT)
 
@@ -711,34 +707,32 @@ function GameLoop()
     -- loop until a round is lost or TTL runs out
     while true do
         -- check game state
-        if emu.framecount() % 5 == 0 then
-            death_check()
-            calculate_fitness()
+        death_check()
+        calculate_fitness()
+        refresh_gui()
+        -- battle lost?
+        if ttl <= 0 or ally_deaths >= 3 then
+            print("Battle lost: ttl="..ttl..", ally_deaths="..ally_deaths)
+            break
+        end
+        -- battle forfeit?
+        if forfeit_check() then
+            print("Battle forfeit.")
+            break
+        end
+        -- battle won?
+        if enemy_deaths >= (3 * battle_number) then
+            print("Battle won! "..battle_number)
+            -- round also won?
+            if battle_number % 7 == 0 then
+                print("Round won! "..round_number)
+                round_number = round_number + 1
+                has_battled = 0
+                input_state = table.shallow_copy(INPUTSTATE_STRUCT)
+            end
+            battle_number = battle_number + 1
+            ally_deaths = 0
             refresh_gui()
-            -- battle lost?
-            if ttl <= 0 or ally_deaths >= 3 then
-                print("Battle lost.")
-                break
-            end
-            -- battle forfeit?
-            if forfeit_check() then
-            	print("Battle forfeit.")
-            	break
-            end
-            -- battle won?
-            if enemy_deaths >= (3 * battle_number) then
-                print("Battle won! "..battle_number)
-                -- round also won?
-                if battle_number % 7 == 0 then
-                	print("Round won! "..round_number)
-                	round_number = round_number + 1
-                	has_battled = 0
-                	input_state = table.shallow_copy(INPUTSTATE_STRUCT)
-                end
-                battle_number = battle_number + 1
-            	ally_deaths = 0
-            	refresh_gui()
-            end
         end
 
         -- manually move out of trivial states
@@ -773,21 +767,22 @@ function GameLoop()
         	local action_weights = sort_actions({table.unpack(output, 1, 7)}) -- sort all relevant action weights
         	local team_weights = sort_actions({table.unpack(output, 5, 7)}) -- sort team member weights
         	-- local move_weights = sort_actions({table.unpack(output, 1, 4)}) -- sort move weights
-        	print("Action priorities:")
+        	print("\nAction Priorities:")
         	for k,v in ipairs(action_weights) do print(k, v) end
 
         	-- attempt to perform next best action
         	local attempt_idx = 1
         	local turn_success = false
         	while not turn_success do
+        	    print("Attempt_idx="..attempt_idx)
         		-- first check if active pokemon is dead
         		local active_hp = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
         		if active_hp <= 0 then
-        		    print("Active pokemon is dead: attempt_idx="..attempt_idx..", party_idx="..team_weights[attempt_idx])
+        		    print("Active pokemon is dead: attempting switch to party_idx="..team_weights[attempt_idx])
         			turn_success = switch_active(team_weights[attempt_idx])
         		else
         		    local action_idx = action_weights[attempt_idx]
-        		    print("Action attempt: "..attempt_idx, "Action index#"..action_idx)
+        		    print("Action_idx="..action_idx)
 
                     if action_idx <= 4 then
                         -- move decision
@@ -795,7 +790,7 @@ function GameLoop()
                         turn_success = perform_move(action_idx)
                     else
                         -- switch decision
-                        print("Switching to party member #"..action_idx - 4)
+                        print("Switching to party_idx="..action_idx - 4)
                         turn_success = switch_active(action_idx - 4)
                     end
                 end
@@ -809,8 +804,7 @@ function GameLoop()
         end
 
         -- advance single frame
-        advance_frames(input_keys)
-        ttl = ttl - 1
+        advance_frames({}, 1)
     end
 
     -- end game loop
