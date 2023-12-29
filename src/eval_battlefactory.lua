@@ -20,6 +20,19 @@ local MODE_OUTSIDE = 0x57BC
 local MODE_BATTLEROOM = 0x290
 local MODE_NA = 0x0000
 
+-- global vars for game loop
+local ttl
+local ally_deaths
+local enemy_deaths
+local last_dead_ally
+local last_dead_enemy
+local gp
+local battle_number
+local round_number
+local fitness
+local has_battled
+local input_state
+
 -- orderings of shuffled pokemon data blocks from shift-values
 local SHUFFLE_ORDER = {
 	["0"] = {A = 1, B = 2, C = 3, D = 4};
@@ -265,24 +278,6 @@ local function serialize_table(tabl, indent)
     return str
 end
 
-
--- ### GAME LOOP ###
-print("Is client connected to socket server?")
-print(comm.socketServerIsConnected())
-print(comm.socketServerGetInfo())
-
--- # GLOBAL VARS #
-local ttl
-local ally_deaths
-local enemy_deaths
-local last_dead_ally
-local last_dead_enemy
-local gp
-local battle_number
-local round_number
-local fitness
-local has_battled
-
 local function refresh_gui()
     gui.cleartext()
 	gui.drawText(150, 0, "Ally Deaths: "..ally_deaths, "#ED4C40", "#000000", 10)
@@ -380,6 +375,13 @@ local function advance_frames(instruct, cnt)
         -- ttl = ttl - 1
     end
 end
+
+-- ####################################
+-- ####         GAME LOOP          ####
+-- ####################################
+print("Is client connected to socket server?")
+print(comm.socketServerIsConnected())
+print(comm.socketServerGetInfo())
 
 function GameLoop()
     print("Beginning game loop...")
