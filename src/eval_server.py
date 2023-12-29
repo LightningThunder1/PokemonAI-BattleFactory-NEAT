@@ -122,7 +122,7 @@ class EvaluationServer:
                 # read and sort input state
                 bf_state = json.loads(data[m_index + 8:])
                 bf_state = self.sort_dict(bf_state)
-                # print(json.dumps(bf_state, indent=4))
+                print(json.dumps(bf_state, indent=4))
 
                 # flatten input state
                 bf_state = self.flatten_dict(bf_state)

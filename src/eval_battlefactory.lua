@@ -589,16 +589,20 @@ end
 
 -- switch active battle pokemon to given party index, if possible
 local function switch_active(party_idx)
+    party_idx = tostring(party_idx)
     -- is the given party member dead?
     if input_state.AllyParty[party_idx].Stats.HP <= 0 then
+        print("Party member #"..party_idx.." is dead!")
     	return false
     end
     -- is the given party member already active?
     if input_state.AllyParty[party_idx].Active == 1 then
+        print("Party member #"..party_idx.." is already active!")
     	return false
     end
     local battle_state = memory.read_u8(gp + BATTLESTATE_OFFSET)
     -- first move to party selection menu
+    advance_frames({}, 200) -- buffer while main battle menu loads
     if battle_state == MODE_BATTLE_TURN then
     	advance_frames({["Right"] = "True"}, 5)
         advance_frames({}, 1)
@@ -607,9 +611,10 @@ local function switch_active(party_idx)
     end
     -- find target pokemon menu index
     local target_id = input_state.AllyParty[party_idx].ID
-    local menu_idx
-    for i=0,3,1 do
+    local menu_idx = 0
+    for i=0,2,1 do
     	local test_id = memory.read_u16_le(gp + BATTLE_PMENU_OFFSET + (0x50 * i))
+    	print(i, "test_id="..test_id.." , target_id="..target_id)
     	if test_id == target_id then
     		menu_idx = i + 1
     	end
@@ -619,14 +624,18 @@ local function switch_active(party_idx)
     	advance_frames({["Right"] = "True"}, 5)
     elseif menu_idx == 3 then
         advance_frames({["Down"] = "True"}, 5)
-    else
+    elseif menu_idx == 1 then
+        print("Party member #"..party_idx.." is already active! menu_idx="..menu_idx)
         return false
+    else
+        print("Failed to find menu_idx for party member #"..party_idx)
     end
     -- select pokemon
     advance_frames({}, 1)
     advance_frames({A = "True"}, 15)
     advance_frames({}, 1)
     advance_frames({A = "True"}, 15)
+    advance_frames({}, 250) -- buffer while pokemon switches in
     return true
 end
 
@@ -722,11 +731,12 @@ function GameLoop()
         	local output = eval_state()
         	local team_weights = {table.unpack(output, 5, 7)} -- slice to 3 ally pokemon choices
         	team_weights = sort_by_values(team_weights, function(a, b) return a > b end) -- sort by desirability
-        	for k,v in ipairs(team_weights) do print(k, v) end
+        	-- for k,v in ipairs(team_weights) do print(k, v) end
         	-- attempt to switch to most desirable pokemon
         	local attempt_idx = 1
             while not switch_active(team_weights[attempt_idx]) do
-            	print("Switching failed! party_idx="..attempt_idx.." , target_id="..input_state.AllyParty[attempt_idx].ID)
+                local party_idx = tostring(team_weights[attempt_idx])
+            	print("Switching failed! party_idx="..party_idx.." , target_id="..input_state.AllyParty[party_idx].ID)
             	attempt_idx = attempt_idx + 1
             	if attempt_idx > 3 then
             	    print("Failed to switch to any party member.")
