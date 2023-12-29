@@ -506,6 +506,47 @@ local function advance_frames(instruct, cnt)
     end
 end
 
+-- selects initial or trades pokemon in trade menu
+local function trade_pokemon(indices)
+    local menu_index = 0
+    advance_frames({}, 200) -- buffer while menu loads
+    if game_state() == STATE_INIT then
+        -- rent each pokemon by index
+    	for k,idx in pairs(indices) do
+    		local dist = idx - menu_index
+    		print("Selecting pokemon #"..idx)
+    		-- advance to next index
+    		if dist ~= 0 then
+    		    local dir
+    			if dist < 0 then
+    				dir = "Left"
+    			else
+    			    dir = "Right"
+    			    -- dist = dist - 1
+    			end
+    			-- 6 frames L/R, 1 null frame per index
+    			for i=0,math.abs(dist)-1,1 do
+    				advance_frames({[dir] = "True"}, 6)
+                    advance_frames({}, 1)
+    			end
+    			menu_index = idx
+    		end
+    		-- select pokemon
+    		advance_frames({A = "True"}, 5)
+            advance_frames({}, 1)
+            advance_frames({["Down"] = "True"}, 6)
+            advance_frames({}, 1)
+            advance_frames({A = "True"}, 8)
+            advance_frames({}, 1)
+    	end
+    	-- exit trade menu
+        while in_trade_menu() do
+            advance_frames({A = "True"}, 1)
+            advance_frames({}, 5)
+        end
+    end
+end
+
 -- ####################################
 -- ####         GAME LOOP          ####
 -- ####################################
@@ -577,10 +618,13 @@ function GameLoop()
         end
 
         -- select pokemon from trade menu
-        if in_trade_menu() then
+        if is_trading() and in_trade_menu() then
             read_inputstate()
             comm.socketServerSend("BF_STATE"..serialize_table(input_state))
             local decision = comm.socketServerResponse()
+
+            -- select pokemon from NN decision
+            trade_pokemon({ 0, 5, 1 })
         end
 
         -- advance from battle-room to battle
