@@ -517,9 +517,20 @@ local function str_to_table(str)
     return t
 end
 
+local function sort_by_values(tbl, sort_function)
+    local keys = {}
+    for key in pairs(tbl) do
+        table.insert(keys, key)
+    end
+    table.sort(keys, function(a, b)
+        return sort_function(tbl[a], tbl[b]) end
+    )
+    return keys
+end
+
 -- selects initial or trades pokemon in trade menu
 local function trade_pokemon(indices)
-    local menu_index = 0
+    local menu_index = 1
     advance_frames({}, 200) -- buffer while menu loads
     if game_state() == STATE_INIT then
         -- rent each pokemon by index
@@ -631,12 +642,11 @@ function GameLoop()
         -- select pokemon from trade menu
         if is_trading() and in_trade_menu() then
             read_inputstate()
-            comm.socketServerSend("BF_STATE"..serialize_table(input_state))
-            local output = comm.socketServerResponse()
-            output = str_to_table(output)
-
-            -- select pokemon from NN decision
-            trade_pokemon({ 0, 5, 1 })
+            comm.socketServerSend("BF_STATE"..serialize_table(input_state))  -- send state to eval server
+            local output = str_to_table(comm.socketServerResponse())
+            output = {table.unpack(output, 5, #output)} -- slice to 6 pokemon choices
+            local sorted = sort_by_values(output, function(a, b) return a > b end)  -- sort output layer
+            trade_pokemon({ sorted[1], sorted[2], sorted[3] })  -- select top 3 pokemon choices
         end
 
         -- advance from battle-room to battle

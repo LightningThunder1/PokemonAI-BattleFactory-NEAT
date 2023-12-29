@@ -130,7 +130,7 @@ class EvaluationServer:
 
                 # forward feed
                 output_layer = nn.activate(input_layer)
-                output_msg = "{ " + ", ".join([str(round(x, 5)) for x in output_layer]) + " }"
+                output_msg = "{ " + ", ".join([str(round(x, 10)) for x in output_layer]) + " }"
                 print(output_msg)
 
                 # respond with output message
