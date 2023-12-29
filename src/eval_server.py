@@ -34,7 +34,8 @@ class EvaluationServer:
             self.ACTIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
         if game_mode == "battle_factory":
             self.EVAL_SCRIPT = "./src/eval_battlefactory.lua"
-            self.ACTIONS = ['B', 'A', 'Up', 'Down', 'Left', 'Right']
+            # self.ACTIONS = ['B', 'A', 'Up', 'Down', 'Left', 'Right']
+            self.ACTIONS = ['Move1', 'Move2', 'Move3', 'Move4', 'Poke1', 'Poke2', 'Poke3', 'Poke4', 'Poke5', 'Poke6']
 
     def eval_genomes(self, genomes, config) -> None:
         """

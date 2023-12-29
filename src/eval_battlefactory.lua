@@ -20,6 +20,9 @@ local MODE_OUTSIDE = 0x57BC
 local MODE_BATTLEROOM = 0x290
 local MODE_NA = 0x0000
 
+-- neural network consts
+local ACTIONS = {'Move1', 'Move2', 'Move3', 'Move4', 'Poke1', 'Poke2', 'Poke3', 'Poke4', 'Poke5', 'Poke6'}
+
 -- global vars for game loop
 local ttl
 local ally_deaths
@@ -506,6 +509,14 @@ local function advance_frames(instruct, cnt)
     end
 end
 
+local function str_to_table(str)
+    local t = {}
+    for v in string.gmatch( str, "([%w%d%.]+)") do
+       t[#t+1] = v
+    end
+    return t
+end
+
 -- selects initial or trades pokemon in trade menu
 local function trade_pokemon(indices)
     local menu_index = 0
@@ -621,7 +632,8 @@ function GameLoop()
         if is_trading() and in_trade_menu() then
             read_inputstate()
             comm.socketServerSend("BF_STATE"..serialize_table(input_state))
-            local decision = comm.socketServerResponse()
+            local output = comm.socketServerResponse()
+            output = str_to_table(output)
 
             -- select pokemon from NN decision
             trade_pokemon({ 0, 5, 1 })
