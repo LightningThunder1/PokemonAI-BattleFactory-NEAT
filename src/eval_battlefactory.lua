@@ -208,16 +208,14 @@ local function read_pokemon(ptr, party_idx)
 	-- calculate shuffled block offsets
 	local a_offset = (SHUFFLE_ORDER[shift]["A"] - 1) * 0x20
 	local b_offset = (SHUFFLE_ORDER[shift]["B"] - 1) * 0x20
-	local c_offset = (SHUFFLE_ORDER[shift]["C"] - 1) * 0x20
-	local d_offset = (SHUFFLE_ORDER[shift]["D"] - 1) * 0x20
+	-- local c_offset = (SHUFFLE_ORDER[shift]["C"] - 1) * 0x20
+	-- local d_offset = (SHUFFLE_ORDER[shift]["D"] - 1) * 0x20
 
 	-- instantiate new pokemon obj and populate vars
 	local pokemon = table.shallow_copy(POKEMON_STRUCT)
 	pokemon.ID = fetch_Dv(a_offset, 0x08 - 0x08) & 0x0FFF
-	-- pokemon.PID = pid
 	pokemon.HeldItem = fetch_Dv(a_offset, 0x0A - 0x08) & 0x0FFF
-	-- pokemon.Ability = fetch_Dv(a_offset, 0x15 - 0x08)  -- TODO fix
-	-- pokemon.EXP = fetch_Dv(a_offset, 0x10 - 0x08) -- TODO
+	pokemon.Ability = (fetch_Dv(a_offset, 0x14 - 0x08) & 0xFF00) >> 8
 	pokemon.Moves = {
 		["1"] = {
 			ID = fetch_Dv(b_offset, 0x28 - 0x28) & 0xFFFF,
