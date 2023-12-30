@@ -548,45 +548,62 @@ local function eval_state()
     return str_to_table(comm.socketServerResponse())
 end
 
--- selects initial or trades pokemon in trade menu
-local function trade_pokemon(indices)
+-- selects initial pokemon in trade menu
+local function init_pokemon(indices)
     local menu_index = 1
-    advance_frames({}, 200) -- buffer while menu loads
-    if game_state() == STATE_INIT then
-        -- rent each pokemon by index
-    	for k,idx in pairs(indices) do
-    		local dist = idx - menu_index
-    		print("Selecting pokemon #"..idx)
-    		-- advance to next index
-    		if dist ~= 0 then
-    		    local dir
-    			if dist < 0 then
-    				dir = "Left"
-    			else
-    			    dir = "Right"
-    			    -- dist = dist - 1
-    			end
-    			-- 6 frames L/R, 1 null frame per index
-    			for i=0,math.abs(dist)-1,1 do
-    				advance_frames({[dir] = "True"}, 6)
-                    advance_frames({}, 1)
-    			end
-    			menu_index = idx
-    		end
-    		-- select pokemon
-    		advance_frames({A = "True"}, 5)
-            advance_frames({}, 1)
-            advance_frames({["Down"] = "True"}, 6)
-            advance_frames({}, 1)
-            advance_frames({A = "True"}, 8)
-            advance_frames({}, 1)
-    	end
-    	-- exit trade menu
-        while in_trade_menu() do
-            advance_frames({A = "True"}, 1)
-            advance_frames({}, 5)
+    -- rent each pokemon by index
+    for k,idx in pairs(indices) do
+        local dist = idx - menu_index
+        print("Selecting init pokemon #"..idx)
+        -- advance to next index
+        if dist ~= 0 then
+            local dir
+            if dist < 0 then
+                dir = "Left"
+            else
+                dir = "Right"
+                -- dist = dist - 1
+            end
+            -- 6 frames L/R, 1 null frame per index
+            for i=0,math.abs(dist)-1,1 do
+                advance_frames({[dir] = "True"}, 6)
+                advance_frames({}, 1)
+            end
+            menu_index = idx
         end
+        -- select pokemon
+        advance_frames({A = "True"}, 5)
+        advance_frames({}, 1)
+        advance_frames({["Down"] = "True"}, 6)
+        advance_frames({}, 1)
+        advance_frames({A = "True"}, 8)
+        advance_frames({}, 1)
     end
+end
+
+local function trade_pokemon(ally_idx, enemy_idx)
+    print("Trading ally_idx="..ally_idx.." for enemy_idx="..enemy_idx)
+    -- first select ally pokemon
+    local dist = ally_idx - 1
+    for i=0,math.abs(dist)-1,1 do
+        advance_frames({["Right"] = "True"}, 6)
+        advance_frames({}, 1)
+    end
+    advance_frames({A = "True"}, 5)
+    advance_frames({}, 1)
+    advance_frames({["Down"] = "True"}, 6)
+    advance_frames({}, 1)
+    advance_frames({A = "True"}, 8)
+    -- then buffer and select enemy pokemon
+    advance_frames({}, 300)
+    dist = enemy_idx - 1
+    for i=0,math.abs(dist)-1,1 do
+        advance_frames({["Right"] = "True"}, 6)
+        advance_frames({}, 1)
+    end
+    advance_frames({A = "True"}, 5)
+    advance_frames({}, 1)
+    advance_frames({A = "True"}, 20)
 end
 
 -- switch active battle pokemon to given party index, if possible
@@ -654,6 +671,7 @@ local function perform_move(move_idx)
     advance_frames({A = "True"}, 20)
     advance_frames({}, 1)
     -- reposition to chosen move
+    -- TODO previous moves change initial selected menu_idx
     if move_idx == 2 then
     	advance_frames({["Right"] = "True"}, 5)
     elseif move_idx == 3 then
@@ -671,7 +689,9 @@ local function perform_move(move_idx)
     advance_frames({}, 50)
     -- did the move fail?
     if is_battle_turn() then
-    	return false
+        advance_frames({B = "True"}, 20)
+        advance_frames({}, 1)
+    	return false -- TODO fix
     end
     return true
 end
@@ -719,9 +739,45 @@ end
 local function trade_menu_check()
     if is_trading() and in_trade_menu() then
         local output = eval_state()
-        output = {table.unpack(output, 5, #output)} -- slice to 6 pokemon choices
-        local team_weights = sort_actions(output)  -- sort team selection weights
-        trade_pokemon({ team_weights[1], team_weights[2], team_weights[3] })  -- select top 3 pokemon choices
+        local team_weights = sort_actions({table.unpack(output, 5, #output)})  -- sort 6 team selection weights
+        advance_frames({}, 200) -- buffer while menu loads
+        if game_state() == STATE_INIT then
+            -- select init pokemon
+            print("\nSelecting init pokemon...")
+            init_pokemon({ team_weights[1], team_weights[2], team_weights[3] })  -- select top 3 pokemon choices
+        else
+            print("\nTrading team members...")
+            -- are any enemy pokemon weighted higher than any ally?
+            local enemy_idx = -math.huge
+            local ally_idx = math.huge
+            for k,v in ipairs(team_weights) do
+            	if v <= 3 then
+                    ally_idx = math.min(k, ally_idx)
+            	else
+            	    enemy_idx = math.max(k, enemy_idx)
+            	end
+            end
+            if enemy_idx < ally_idx then
+                -- trade worst ally with best enemy
+            	enemy_idx = team_weights[enemy_idx] - 3
+                ally_idx = team_weights[ally_idx]
+                trade_pokemon(ally_idx, enemy_idx)
+            else
+                -- cancel trade
+                print("No trade was made.")
+                advance_frames({["Down"] = "True"}, 5)
+                advance_frames({}, 1)
+                advance_frames({A = "True"}, 5)
+                advance_frames({}, 1)
+                advance_frames({A = "True"}, 5)
+                advance_frames({}, 1)
+            end
+        end
+        -- exit trade menu
+        while in_trade_menu() do
+            advance_frames({A = "True"}, 1)
+            advance_frames({}, 5)
+        end
     end
 end
 
