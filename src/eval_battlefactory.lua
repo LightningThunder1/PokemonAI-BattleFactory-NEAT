@@ -120,6 +120,7 @@ local BLOCK_B = {  -- 192 bytes
 }
 
 -- copy table data structures
+-- TODO impl resursive table copy logic
 function table.shallow_copy(t)
 	local t2 = {}
 	for k,v in pairs(t) do
@@ -350,37 +351,7 @@ local function serialize_table(tabl, indent)
 end
 
 local function reset_ttl()
-    ttl = 20000
-end
-
-local function death_check()
-    -- game mode check TODO replace with BATTLE_STATE?
-    local mode = memory.read_u16_le(gp + MODE_OFFSET)
-    if mode == MODE_NA or mode == MODE_TRADE or mode == MODE_OUTSIDE or mode == MODE_BATTLEROOM then
-    	return
-    end
-
-    -- check active battle pokemon for deaths
-    has_battled = 1
-
-    -- enemy death check
-    local enemy = read_unencrypted_pokemon(gp + ACTIVE_ENEMY_OFFSET, BLOCK_B)
-    if enemy.ID ~= 0x0 and enemy.ID ~= last_dead_enemy and enemy.Stats.HP <= 0x0 then
-    	enemy_deaths = enemy_deaths + 1
-    	reset_ttl()
-    	print("Enemy died! enemy_id="..enemy.ID..", last_dead="..last_dead_enemy..", enemy_deaths="..enemy_deaths)
-    	last_dead_enemy = enemy.ID
-    	advance_frames({}, 350) -- buffer while next enemy loads into memory
-    end
-
-    -- ally death check
-    local ally = read_unencrypted_pokemon(gp + ACTIVE_ALLY_OFFSET, BLOCK_B)
-    if ally.ID ~= 0x0 and ally.ID ~= last_dead_ally and ally.Stats.HP <= 0x0 then
-    	ally_deaths = ally_deaths + 1
-    	reset_ttl()
-    	print("Ally died! ally_id="..ally.ID..", last_dead="..last_dead_ally..", ally_deaths="..ally_deaths)
-    	last_dead_ally = ally.ID
-    end
+    ttl = 50000
 end
 
 local function is_battle_turn()
@@ -510,6 +481,24 @@ local function read_inputstate()
     end
 
     return input_state
+end
+
+local function death_check()
+    -- game mode check
+    if game_state() ~= STATE_BATTLE then
+    	return
+    end
+    -- check active battle pokemon for deaths
+    has_battled = 1
+    read_inputstate()
+    enemy_deaths = 0
+    ally_deaths = 0
+    for k,v in pairs(input_state.EnemyParty) do
+    	if v.Stats.HP <= 0 then enemy_deaths = enemy_deaths + 1 end
+    end
+    for k,v in pairs({table.unpack(input_state.AllyParty, 1, 3)}) do
+    	if v.Stats.HP <= 0 then ally_deaths = ally_deaths + 1 end
+    end
 end
 
 local function calculate_fitness()
@@ -718,6 +707,7 @@ local function finished_check()
         end
         battle_number = battle_number + 1
         ally_deaths = 0
+        reset_ttl()
         refresh_gui()
     end
     return false
@@ -849,8 +839,6 @@ function GameLoop()
     reset_ttl()
     ally_deaths = 0
     enemy_deaths = 0
-    last_dead_ally = 0x0
-    last_dead_enemy = 0x0
     battle_number = 1
     round_number = 1
     fitness = 0.0
