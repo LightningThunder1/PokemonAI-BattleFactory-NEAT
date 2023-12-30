@@ -120,11 +120,15 @@ local BLOCK_B = {  -- 192 bytes
 }
 
 -- copy table data structures
--- TODO impl resursive table copy logic
 function table.shallow_copy(t)
 	local t2 = {}
 	for k,v in pairs(t) do
-		t2[k] = v
+	    if type(v) == "table" then
+	        -- resursive table copy
+            t2[k] = table.shallow_copy(v)
+        else
+		    t2[k] = v
+		end
 	end
 	return t2
 end
@@ -146,14 +150,6 @@ local INPUTSTATE_STRUCT = {
         ["3"] = table.shallow_copy(POKEMON_STRUCT),
     }
 }
-
--- copy table-b fields into table-a
-local function copy_into(a, b)
-    for k,v in pairs(b) do
-    	a[k] = v
-    end
-    return a
-end
 
 -- multiply 4-byte values
 local function mult32(a, b)
