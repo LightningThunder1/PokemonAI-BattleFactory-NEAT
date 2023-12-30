@@ -349,6 +349,10 @@ local function serialize_table(tabl, indent)
     return str
 end
 
+local function reset_ttl()
+    ttl = 20000
+end
+
 local function death_check()
     -- game mode check TODO replace with BATTLE_STATE?
     local mode = memory.read_u16_le(gp + MODE_OFFSET)
@@ -357,14 +361,13 @@ local function death_check()
     end
 
     -- check active battle pokemon for deaths
-    local reset_ttl = false
     has_battled = 1
 
     -- enemy death check
     local enemy = read_unencrypted_pokemon(gp + ACTIVE_ENEMY_OFFSET, BLOCK_B)
     if enemy.ID ~= 0x0 and enemy.ID ~= last_dead_enemy and enemy.Stats.HP <= 0x0 then
     	enemy_deaths = enemy_deaths + 1
-    	reset_ttl = true
+    	reset_ttl()
     	print("Enemy died! enemy_id="..enemy.ID..", last_dead="..last_dead_enemy..", enemy_deaths="..enemy_deaths)
     	last_dead_enemy = enemy.ID
     	advance_frames({}, 350) -- buffer while next enemy loads into memory
@@ -374,14 +377,9 @@ local function death_check()
     local ally = read_unencrypted_pokemon(gp + ACTIVE_ALLY_OFFSET, BLOCK_B)
     if ally.ID ~= 0x0 and ally.ID ~= last_dead_ally and ally.Stats.HP <= 0x0 then
     	ally_deaths = ally_deaths + 1
-    	reset_ttl = true
+    	reset_ttl()
     	print("Ally died! ally_id="..ally.ID..", last_dead="..last_dead_ally..", ally_deaths="..ally_deaths)
     	last_dead_ally = ally.ID
-    end
-
-    -- reset TTL?
-    if reset_ttl then
-    	ttl = ttl + 5000
     end
 end
 
@@ -848,7 +846,7 @@ function GameLoop()
     print("Beginning game loop...")
 
     -- initialize global vars
-    ttl = 15000 -- 20000
+    reset_ttl()
     ally_deaths = 0
     enemy_deaths = 0
     last_dead_ally = 0x0
