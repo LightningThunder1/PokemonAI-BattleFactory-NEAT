@@ -645,38 +645,52 @@ local function switch_active(party_idx)
     advance_frames({A = "True"}, 15)
     advance_frames({}, 1)
     advance_frames({A = "True"}, 15)
-    advance_frames({}, 250) -- buffer while pokemon switches in
+    advance_frames({}, 300) -- buffer while pokemon switches in
     return true
 end
 
 local function perform_move(move_idx)
-    move_idx = tostring(move_idx)
     -- advance into move menu
-    advance_frames({}, 100)  -- buffer while main battle menu loads
-    advance_frames({A = "True"}, 20)
+    advance_frames({A = "True"}, 18)
     advance_frames({}, 1)
-    -- reposition to chosen move
-    -- TODO previous moves change initial selected menu_idx
-    if move_idx == 2 then
-    	advance_frames({["Right"] = "True"}, 5)
+    -- select chosen move using analog controls
+    if move_idx == 1 then
+    	joypad.setanalog({
+            ["Touch X"] = 60,
+            ["Touch Y"] = 60,
+        })
+        advance_frames({["Touch"] = "True"}, 15)
+    elseif move_idx == 2 then
+    	joypad.setanalog({
+            ["Touch X"] = 200,
+            ["Touch Y"] = 60,
+        })
+        advance_frames({["Touch"] = "True"}, 15)
     elseif move_idx == 3 then
-        advance_frames({["Down"] = "True"}, 5)
+        joypad.setanalog({
+            ["Touch X"] = 60,
+            ["Touch Y"] = 120,
+        })
+        advance_frames({["Touch"] = "True"}, 15)
     elseif move_idx == 4 then
-        advance_frames({["Right"] = "True"}, 5)
-        advance_frames({}, 1)
-        advance_frames({["Down"] = "True"}, 5)
+        joypad.setanalog({
+            ["Touch X"] = 200,
+            ["Touch Y"] = 120,
+        })
+        advance_frames({["Touch"] = "True"}, 15)
     end
-    -- select chosen move
-    advance_frames({}, 1)
-    advance_frames({A = "True"}, 20)
-    advance_frames({}, 1)
     -- buffer while move is performed
     advance_frames({}, 50)
+    advance_frames({A = "True"}, 15)
+    advance_frames({}, 1)
     -- did the move fail?
     if is_battle_turn() then
+        print("Move failed...")
         advance_frames({B = "True"}, 20)
         advance_frames({}, 1)
-    	return false -- TODO fix
+        advance_frames({B = "True"}, 20)
+        advance_frames({}, 1)
+    	return false
     end
     return true
 end
@@ -705,7 +719,6 @@ local function finished_check()
         end
         battle_number = battle_number + 1
         ally_deaths = 0
-        lmove_idx = 1
         advance_frames({}, 500) -- buffer while battle finishes
         reset_ttl()
         refresh_gui()
