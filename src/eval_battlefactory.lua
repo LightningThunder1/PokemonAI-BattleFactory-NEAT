@@ -626,6 +626,7 @@ local function switch_active(party_idx)
     -- is the given party member dead?
     if input_state.AllyParty[party_idx].Stats.HP <= 0 then
         print("Failed to switch: party_idx="..party_idx.." is already dead!")
+        advance_frames({B = "True"}, 20)
         advance_frames({}, 1)
         advance_frames({B = "True"}, 20)
         advance_frames({}, 1)
@@ -745,9 +746,14 @@ local function finished_check()
             has_battled = 0
             input_state = table.shallow_copy(INPUTSTATE_STRUCT)
         end
+
+        -- advance_frames({}, 500) -- buffer while battle finishes
+        while not in_battle_room() do -- buffer while battle finishes
+            advance_frames({A = "True"}, 1)
+            advance_frames({}, 5)
+        end
         battle_number = battle_number + 1
         ally_deaths = 0
-        advance_frames({}, 500) -- buffer while battle finishes
         reset_ttl()
         refresh_gui()
     end
@@ -826,7 +832,7 @@ local function battle_turn_check()
     if is_battle_turn() then
         -- buffer while main battle menu loads
         advance_frames({}, 200)
-        advance_frames({A = "True"}, 1) -- get out of analog mode
+        advance_frames({B = "True"}, 1) -- get out of analog mode
         advance_frames({}, 1)
         -- evaluate action weights
         local output = eval_state()

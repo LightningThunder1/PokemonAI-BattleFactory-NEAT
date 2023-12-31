@@ -21,7 +21,7 @@ class Trainer:
         stats = neat.StatisticsReporter()
         p.add_reporter(stats)
         p.add_reporter(neat.Checkpointer(
-            generation_interval=5,
+            generation_interval=1,
             filename_prefix="./checkpoints/neat-ckpt-"
         ))
 
