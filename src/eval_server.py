@@ -19,7 +19,7 @@ import sys
 class EvaluationServer:
 
     HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
-    PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
+    PORT = 0  # Port to listen on (non-privileged ports are > 1023)
     EMU_PATH = '/home/javen/Desktop/PokeDS/BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
     KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
     PNG_HEADER = b"\x89PNG"
@@ -45,6 +45,8 @@ class EvaluationServer:
             print("Initializing socket server...")
             # bind socket server
             s.bind((self.HOST, self.PORT))
+            self.PORT = s.getsockname()[1]
+            print(f'Socket server: listening on port {self.PORT }')
             s.listen()
 
             # spawn agent
