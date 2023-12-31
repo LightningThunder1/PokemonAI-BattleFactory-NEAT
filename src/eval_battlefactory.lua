@@ -95,6 +95,10 @@ local POKEMON_STRUCT = {
 		Status = 0x0, SPD = 0x0,
 		HP = 0x0, MaxHP = 0x0, ATK = 0x0,
 		DEF = 0x0, SPEED = 0x0, SPA = 0x0,
+		ATK_Boost = 0x6, DEF_Boost = 0x6,
+		SPA_Boost = 0x6, SPD_Boost = 0x6,
+		EVA_Boost = 0x6, SPEED_Boost = 0x6,
+		Confused = 0x0,
 	}
 }
 
@@ -118,6 +122,15 @@ local BLOCK_B = {  -- 192 bytes
     MOVE2_PP = 0x2D,
     MOVE3_PP = 0x2E,
     MOVE4_PP = 0x2F,
+    ATK_BOOST = 0x19,
+    DEF_BOOST = 0x1A,
+    SPEED_BOOST = 0x1B,
+    SPA_BOOST = 0x1C,
+    SPD_BOOST = 0x1D,
+    UNK1_BOOST = 0x1E,
+    EVA_BOOST = 0x1F,
+    STATUS = 0x6C,
+    CONFUSED = 0x70,
 }
 
 -- copy table data structures
@@ -249,6 +262,7 @@ local function read_pokemon(ptr, party_idx)
 	}
 	pokemon.Stats = {
 		Status = fetch_Bv(0x88) & 0x00FF, -- TODO test
+		Confused = 0x0,
 		-- Level = fetch_Bv(0x8C) & 0x00FF,
 		HP = fetch_Bv(0x8E) & 0xFFFF,
 		MaxHP = fetch_Bv(0x90) & 0xFFFF,
@@ -257,6 +271,12 @@ local function read_pokemon(ptr, party_idx)
 		SPEED = fetch_Bv(0x96) & 0xFFFF,
 		SPA = fetch_Bv(0x98) & 0xFFFF,
 		SPD = fetch_Bv(0x9A) & 0xFFFF,
+		ATK_Boost = 0x6,
+		DEF_Boost = 0x6,
+		SPA_Boost = 0x6,
+		SPD_Boost = 0x6,
+		SPEED_Boost = 0x6,
+		EVA_Boost = 0x6,
 	}
 	return pokemon
 end
@@ -279,8 +299,16 @@ local function read_unencrypted_pokemon(ptr, offsets, party_idx, pk)
     if offsets == BLOCK_B then
     	pk.Stats.HP = memory.read_u16_le(ptr + offsets.HP)
     	pk.Stats.MaxHP = memory.read_u16_le(ptr + offsets.MAXHP)
-    	-- TODO pk.Stats.Status
+    	pk.Stats.Status = memory.read_u8(ptr + offsets.STATUS)
+    	pk.Stats.Confused = memory.read_u8(ptr + offsets.CONFUSED)
+    	pk.Stats.ATK_Boost = memory.read_u8(ptr + offsets.ATK_BOOST)
+    	pk.Stats.DEF_Boost = memory.read_u8(ptr + offsets.DEF_BOOST)
+    	pk.Stats.SPA_Boost = memory.read_u8(ptr + offsets.SPA_BOOST)
+    	pk.Stats.SPD_Boost = memory.read_u8(ptr + offsets.SPD_BOOST)
+    	pk.Stats.SPEED_Boost = memory.read_u8(ptr + offsets.SPEED_BOOST)
+    	pk.Stats.EVA_Boost = memory.read_u8(ptr + offsets.EVA_BOOST)
     	-- TODO pk.HeldItem
+    	-- TODO torment, taunt, weather effects?
     	pk.Moves["1"].PP = memory.read_u8(ptr + offsets.MOVE1_PP)
     	pk.Moves["2"].PP = memory.read_u8(ptr + offsets.MOVE2_PP)
     	pk.Moves["3"].PP = memory.read_u8(ptr + offsets.MOVE3_PP)
