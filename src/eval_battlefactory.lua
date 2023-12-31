@@ -31,14 +31,15 @@ local ACTIONS = {'Move1', 'Move2', 'Move3', 'Move4', 'Poke1', 'Poke2', 'Poke3', 
 local ttl
 local ally_deaths
 local enemy_deaths
-local last_dead_ally
-local last_dead_enemy
 local gp
 local battle_number
 local round_number
 local fitness
 local has_battled
 local input_state
+
+-- options
+local FORCE_MOVES = false
 
 -- orderings of shuffled pokemon data blocks from shift-values
 local SHUFFLE_ORDER = {
@@ -388,7 +389,6 @@ end
 -- updates the cached inputstate from current game state memory
 local function read_inputstate()
     input_state.State = game_state()
-
     -- determine state pointers
     if input_state.State == STATE_INIT then
         -- init state
@@ -413,7 +413,7 @@ local function read_inputstate()
         local active_enemy_ptr = gp + ACTIVE_ENEMY_OFFSET
         local allyparty_ptr = gp + ALLY_OFFSET -- encrypted party of 3
         local enemyparty_ptr = gp + ENEMY_OFFSET -- encrypted party of 3
-
+        -- init battle pokemon states
         if in_battle_room() then
         	input_state.AllyParty = {
                 ["1"] = read_pokemon(allyparty_ptr, 0),
@@ -430,11 +430,11 @@ local function read_inputstate()
             }
         end
         -- update active party member state
-        local active_ally = memory.read_u16_le(active_ally_ptr) -- ID only
-        local active_enemy = memory.read_u16_le(active_enemy_ptr) -- ID only
+        local active_ally_id = memory.read_u16_le(active_ally_ptr) -- ID only
+        local active_enemy_id = memory.read_u16_le(active_enemy_ptr) -- ID only
         -- active ally
         for k,v in pairs(input_state.AllyParty) do
-        	if v.ID == active_ally then
+        	if v.ID == active_ally_id then
         		read_unencrypted_pokemon(active_ally_ptr, BLOCK_B, 0, v)
                 v.Active = 1
         	else
@@ -443,9 +443,14 @@ local function read_inputstate()
         end
         -- active enemy
         for k,v in pairs(input_state.EnemyParty) do
-        	if v.ID == active_enemy then
+        	if v.ID == active_enemy_id then
         		read_unencrypted_pokemon(active_enemy_ptr, BLOCK_B, 0, v)
                 v.Active = 1
+                -- buffer if active enemy is dying
+                if v.Stats.HP <= 0 then
+                    print("Active enemy is dead! "..v.ID)
+                    advance_frames({}, 500) -- prevents double counting enemy deaths
+                end
         	else
         	    v.Active = 0
         	end
@@ -485,13 +490,13 @@ local function death_check()
     -- check active battle pokemon for deaths
     has_battled = 1
     read_inputstate()
-    enemy_deaths = 0
+    enemy_deaths = (battle_number - 1) * 3
     ally_deaths = 0
     for k,v in pairs(input_state.EnemyParty) do
     	if v.Stats.HP <= 0 then enemy_deaths = enemy_deaths + 1 end
     end
-    for k,v in pairs({table.unpack(input_state.AllyParty, 1, 3)}) do
-    	if v.Stats.HP <= 0 then ally_deaths = ally_deaths + 1 end
+    for k,v in pairs(input_state.AllyParty) do
+    	if v.ID ~= 0 and v.Stats.HP <= 0 then ally_deaths = ally_deaths + 1 end
     end
 end
 
@@ -607,7 +612,6 @@ local function switch_active(party_idx)
     end
     local battle_state = memory.read_u8(gp + BATTLESTATE_OFFSET)
     -- first move to party selection menu
-    advance_frames({}, 200) -- buffer while main battle menu loads
     if battle_state == MODE_BATTLE_TURN then
     	advance_frames({["Right"] = "True"}, 5)
         advance_frames({}, 1)
@@ -620,7 +624,7 @@ local function switch_active(party_idx)
     local menu_idx = 0
     for i=0,2,1 do
     	local test_id = memory.read_u16_le(gp + BATTLE_PMENU_OFFSET + (0x50 * i))
-    	print(i, "test_id="..test_id.." , target_id="..target_id)
+    	-- print(i, "test_id="..test_id.." , target_id="..target_id)
     	if test_id == target_id then
     		menu_idx = i + 1
     	end
@@ -701,6 +705,8 @@ local function finished_check()
         end
         battle_number = battle_number + 1
         ally_deaths = 0
+        lmove_idx = 1
+        advance_frames({}, 500) -- buffer while battle finishes
         reset_ttl()
         refresh_gui()
     end
@@ -777,14 +783,15 @@ end
 -- make battle move if my turn
 local function battle_turn_check()
     if is_battle_turn() then
+        -- buffer while main battle menu loads
+        advance_frames({}, 200)
+        advance_frames({A = "True"}, 1) -- get out of analog mode
+        advance_frames({}, 1)
         -- evaluate action weights
         local output = eval_state()
         local action_weights = sort_actions({table.unpack(output, 1, 7)}) -- sort all relevant action weights
-        local team_weights = sort_actions({table.unpack(output, 5, 7)}) -- sort team member weights
-        -- local move_weights = sort_actions({table.unpack(output, 1, 4)}) -- sort move weights
         print("\nAction Priorities:")
         for k,v in ipairs(action_weights) do print(k, v) end
-
         -- attempt to perform next best action
         local attempt_idx = 1
         local turn_success = false
@@ -793,12 +800,17 @@ local function battle_turn_check()
             -- first check if active pokemon is dead
             local active_hp = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
             if active_hp <= 0 then
+                local team_weights = sort_actions({table.unpack(output, 5, 7)}) -- sort team member weights
                 print("Active pokemon is dead: attempting switch to party_idx="..team_weights[attempt_idx])
                 turn_success = switch_active(team_weights[attempt_idx])
+            elseif FORCE_MOVES then
+                local move_weights = sort_actions({table.unpack(output, 1, 4)}) -- sort move weights
+                print("Forcing move #"..move_weights[attempt_idx])
+                turn_success = perform_move(move_weights[attempt_idx])
             else
+                -- attempt moves in chosen priority
                 local action_idx = action_weights[attempt_idx]
                 print("Action_idx="..action_idx)
-
                 if action_idx <= 4 then
                     -- move decision
                     print("Performing move #"..action_idx)
