@@ -626,7 +626,6 @@ local function switch_active(party_idx)
     -- is the given party member dead?
     if input_state.AllyParty[party_idx].Stats.HP <= 0 then
         print("Failed to switch: party_idx="..party_idx.." is already dead!")
-        advance_frames({B = "True"}, 20)
         advance_frames({}, 1)
         advance_frames({B = "True"}, 20)
         advance_frames({}, 1)
@@ -747,8 +746,8 @@ local function finished_check()
             input_state = table.shallow_copy(INPUTSTATE_STRUCT)
         end
 
-        -- advance_frames({}, 500) -- buffer while battle finishes
-        while not in_battle_room() do -- buffer while battle finishes
+        -- buffer while battle finishes
+        while not in_battle_room() do
             advance_frames({A = "True"}, 1)
             advance_frames({}, 5)
         end

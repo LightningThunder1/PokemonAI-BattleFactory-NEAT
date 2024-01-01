@@ -124,7 +124,7 @@ class EvaluationServer:
                 # read and sort input state
                 bf_state = json.loads(data[m_index + 8:])
                 bf_state = self.sort_dict(bf_state)
-                print(json.dumps(bf_state, indent=4))
+                # print(json.dumps(bf_state, indent=4))
 
                 # flatten input state
                 bf_state = self.flatten_dict(bf_state)
@@ -133,7 +133,7 @@ class EvaluationServer:
                 # forward feed
                 output_layer = nn.activate(input_layer)
                 output_msg = "{ " + ", ".join([str(round(x, 10)) for x in output_layer]) + " }"
-                print(output_msg)
+                # print(output_msg)
 
                 # respond with output message
                 client.sendall(b'' + bytes(f"{len(output_msg)} {output_msg}", 'utf-8'))
