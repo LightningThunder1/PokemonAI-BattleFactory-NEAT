@@ -780,20 +780,22 @@ local function trade_menu_check()
         advance_frames({}, 200) -- buffer while menu loads
         if game_state() == STATE_INIT then
             -- select init pokemon
-            print("\nSelecting init pokemon...")
+            print("\nSelecting initial pokemon...")
             init_pokemon({ team_weights[1], team_weights[2], team_weights[3] })  -- select top 3 pokemon choices
         else
             print("\nTrading team members...")
             -- are any enemy pokemon weighted higher than any ally?
-            local enemy_idx = -math.huge
-            local ally_idx = math.huge
+            local enemy_idx = math.huge
+            local ally_idx = -math.huge
             for k,v in ipairs(team_weights) do
+                print(k, v)
             	if v <= 3 then
-                    ally_idx = math.min(k, ally_idx)
+                    ally_idx = math.max(k, ally_idx)  -- worst ally
             	else
-            	    enemy_idx = math.max(k, enemy_idx)
+            	    enemy_idx = math.min(k, enemy_idx) -- best enemy
             	end
             end
+            print("enemy_idx="..enemy_idx.." , ally_idx="..ally_idx)
             if enemy_idx < ally_idx then
                 -- trade worst ally with best enemy
             	enemy_idx = team_weights[enemy_idx] - 3
@@ -811,7 +813,8 @@ local function trade_menu_check()
             end
         end
         -- exit trade menu
-        while in_trade_menu() do
+        -- while in_trade_menu() do
+        while not in_battle_room() do
             advance_frames({A = "True"}, 1)
             advance_frames({}, 5)
         end
@@ -821,7 +824,7 @@ end
 -- advance from battle-room to battle
 local function battle_room_check()
     if in_battle_room() then
-        read_inputstate() -- encrypted enemy team now available
+        read_inputstate() -- encrypted enemy team now available in memory
         while in_battle_room() do
             advance_frames({A = "True"}, 1)
             advance_frames({}, 5)
