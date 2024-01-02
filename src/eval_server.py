@@ -43,6 +43,7 @@ class EvaluationServer:
         """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             print("Initializing socket server...")
+            self.PORT = 0  # reset port
             # bind socket server
             s.bind((self.HOST, self.PORT))
             self.PORT = s.getsockname()[1]
@@ -120,7 +121,7 @@ class EvaluationServer:
 
             # is msg a battle factory input state?
             if data[m_index:m_index + 8] == self.BF_STATE_HEADER:
-                print("Processing BF state...")
+                # print("Processing BF state...")
                 # read and sort input state
                 bf_state = json.loads(data[m_index + 8:])
                 bf_state = self.sort_dict(bf_state)
