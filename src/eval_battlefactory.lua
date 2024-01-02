@@ -519,7 +519,6 @@ local function death_check()
     	return
     end
     -- check active battle pokemon for deaths
-    has_battled = 1
     read_inputstate()
     enemy_deaths = (battle_number - 1) * 3
     ally_deaths = 0
@@ -835,6 +834,7 @@ end
 -- make battle move if my turn
 local function battle_turn_check()
     if is_battle_turn() then
+        has_battled = 1 -- has battled this round
         -- buffer while main battle menu loads
         advance_frames({}, 200)
         advance_frames({B = "True"}, 1) -- get out of analog mode
@@ -900,7 +900,7 @@ function GameLoop()
     battle_number = 1
     round_number = 1
     fitness = 0.0
-    has_battled = 0
+    has_battled = 0  -- reset each round
     input_state = table.shallow_copy(INPUTSTATE_STRUCT)
 
     -- load save state
