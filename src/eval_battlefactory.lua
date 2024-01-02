@@ -929,8 +929,10 @@ function GameLoop()
     end
 
     -- end game loop
+    console.clear()
     print("Finished game loop.")
     print("Fitness: "..fitness)
+    print("\n")
     comm.socketServerSend("FITNESS:"..fitness)
     return fitness
 end
