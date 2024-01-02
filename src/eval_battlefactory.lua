@@ -474,10 +474,13 @@ local function read_inputstate()
         	if v.ID == active_enemy_id then
         		read_unencrypted_pokemon(active_enemy_ptr, BLOCK_B, 0, v)
                 v.Active = 1
-                -- buffer if active enemy is dying
+                -- buffer if active enemy is dying to prevent double counting enemy deaths
                 if v.Stats.HP <= 0 then
                     print("Active enemy is dead! "..v.ID)
-                    advance_frames({}, 500) -- prevents double counting enemy deaths
+                    while not (is_battle_turn() or in_battle_room()) do
+                    	advance_frames({A = "True"}, 1)
+                        advance_frames({}, 5)
+                    end
                 end
         	else
         	    v.Active = 0
