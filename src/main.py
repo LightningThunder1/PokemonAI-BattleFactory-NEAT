@@ -10,11 +10,17 @@ class Trainer:
         """
         self.eval_server = eval_server
         self.config = config
+        self.t = 100  # number of generations
+        self.init_ckpt = 0  # restore from a checkpoint? -1 = do not restore
+        self.ckpt_prefix = "./checkpoints/neat-ckpt-"
 
     def run(self):
         # Create the population, which is the top-level object for a NEAT run.
         print("Creating initial population...")
-        p = neat.Population(self.config)
+        if self.init_ckpt >= 0:
+            p = neat.Checkpointer.restore_checkpoint(f'{self.ckpt_prefix}{self.init_ckpt}')
+        else:
+            p = neat.Population(self.config)
 
         # Add a stdout reporter to show progress in the terminal.
         p.add_reporter(neat.StdOutReporter(True))
@@ -22,12 +28,12 @@ class Trainer:
         p.add_reporter(stats)
         p.add_reporter(neat.Checkpointer(
             generation_interval=1,
-            filename_prefix="./checkpoints/neat-ckpt-"
+            filename_prefix=self.ckpt_prefix
         ))
 
         # Run for up to 300 generations.
         print("Starting run...")
-        winner = p.run(self.eval_server.eval_genomes, 100)
+        winner = p.run(self.eval_server.eval_genomes, self.t)
 
         # Display the winning genome.
         # print('\nBest genome:\n{!s}'.format(winner))
@@ -45,7 +51,6 @@ class Trainer:
         # visualize.plot_stats(stats, ylog=False, view=True)
         # visualize.plot_species(stats, view=True)
 
-        # p = neat.Checkpointer.restore_checkpoint('neat-checkpoint-4')
         # p.run(self.eval_genomes, 10)
 
 
