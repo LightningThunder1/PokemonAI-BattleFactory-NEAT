@@ -9,7 +9,10 @@ local ENEMY_OFFSET = 0x3D6BC -- Encrypted
 local MODE_OFFSET = 0x54600
 local TRADEMENU_OFFSET = 0x62BEC
 local BATTLESTATE_OFFSET = -0x514F4
-local BATTLE_PMENU_OFFSET = TRADEMENU_OFFSET -- 0x62BEC
+local BATTLE_MENU_OFFSET = 0xFE618
+local BATTLE_PARTY_OFFSET = 0x62BEC
+local MOVE_FAIL_OFFSET = 0xFE69A
+local PARTY_SELECTED_OFFSET = 0xFE5AA
 
 -- game state & game mode consts
 local STATE_INIT = 0
@@ -23,6 +26,11 @@ local MODE_BATTLEROOM = 0x290
 local MODE_NA = 0x0000
 local MODE_BATTLE_TURN = 0x1
 local MODE_BATTLE_PMENU = 0x97
+local MODE_MOVE_FAIL = 0xFFFF
+local MODE_BATTLE_MENU = 0x12C0
+-- local MODE_BATTLE_MOVES = 0x1E80
+local MODE_BATTLE_PARTY = 0x1AAA
+local MODE_PARTY_SELECTED = 0x8000
 
 -- neural network consts
 local ACTIONS = {'Move1', 'Move2', 'Move3', 'Move4', 'Poke1', 'Poke2', 'Poke3', 'Poke4', 'Poke5', 'Poke6'}
@@ -37,6 +45,7 @@ local round_number
 local fitness
 local has_battled
 local input_state
+local turn
 
 -- options
 local FORCE_MOVES = false
@@ -402,6 +411,26 @@ local function forfeit_check()
     return is_outside() and enemy_deaths < (3 * battle_number) and has_battled == 1
 end
 
+local function in_move_failure()
+    return memory.read_u16_le(gp + MOVE_FAIL_OFFSET) == MODE_MOVE_FAIL
+end
+
+local function in_battle_menu()
+    return memory.read_u16_le(gp + BATTLE_MENU_OFFSET) == MODE_BATTLE_MENU
+end
+
+--local function in_move_menu()
+--    return memory.read_u16_le(gp + BATTLE_MENU_OFFSET) == MODE_BATTLE_MOVES
+--end
+
+local function in_party_menu()
+    return memory.read_u16_le(gp + BATTLE_MENU_OFFSET) == MODE_BATTLE_PARTY
+end
+
+local function in_party_selected()
+    return memory.read_u16_le(gp + PARTY_SELECTED_OFFSET) == MODE_PARTY_SELECTED
+end
+
 local function game_state()
 	if in_trade_menu() and has_battled == 0 then
 		return STATE_INIT
@@ -625,64 +654,98 @@ end
 -- switch active battle pokemon to given party index, if possible
 local function switch_active(party_idx)
     party_idx = tostring(party_idx)
+    -- TODO account for moves that prevent switching
     -- is the given party member dead?
     if input_state.AllyParty[party_idx].Stats.HP <= 0 then
         print("Failed to switch: party_idx="..party_idx.." is already dead!")
-        advance_frames({}, 1)
-        advance_frames({B = "True"}, 20)
-        advance_frames({}, 1)
-        advance_frames({B = "True"}, 20)
-        advance_frames({}, 1)
+        --while not in_party_menu() do
+        --	advance_frames({B = "True"}, 1)
+        --    advance_frames({}, 1)
+        --end
     	return false
     end
+
     -- is the given party member already active?
     if input_state.AllyParty[party_idx].Active == 1 then
         print("Failed to switch: party_idx="..party_idx.." is already active!")
     	return false
     end
-    local battle_state = memory.read_u8(gp + BATTLESTATE_OFFSET)
+
     -- first move to party selection menu
-    if battle_state == MODE_BATTLE_TURN then
-    	advance_frames({["Right"] = "True"}, 5)
-        advance_frames({}, 1)
-        advance_frames({A = "True"}, 60)
-        advance_frames({}, 1)
+    if in_battle_menu() then
+        print("Moving to party selection menu...")
+        while not in_party_menu() do
+            joypad.setanalog({
+                ["Touch X"] = 200,
+                ["Touch Y"] = 160,
+            })
+            advance_frames({["Touch"] = "True"}, 15)
+            advance_frames({}, 1)
+        end
     end
+
     -- find target pokemon menu index
-    print("Attempting to find menu_idx of party_idx="..party_idx)
     local target_id = input_state.AllyParty[party_idx].ID
     local menu_idx = 0
     for i=0,2,1 do
-    	local test_id = memory.read_u16_le(gp + BATTLE_PMENU_OFFSET + (0x50 * i))
-    	-- print(i, "test_id="..test_id.." , target_id="..target_id)
+    	local test_id = memory.read_u16_le(gp + BATTLE_PARTY_OFFSET + (0x50 * i))
     	if test_id == target_id then
     		menu_idx = i + 1
     	end
     end
+
     -- reposition menu selection
-    if menu_idx == 2 then
-    	advance_frames({["Right"] = "True"}, 5)
-    elseif menu_idx == 3 then
-        advance_frames({["Down"] = "True"}, 5)
-    elseif menu_idx == 1 then
-        print("Failed to switch: party_idx="..party_idx.." is already active! (menu_idx=1)")
+    if menu_idx == 1 then
+    	print("Failed to switch: party_idx="..party_idx.." is already active! (menu_idx=1)")
         return false
+    elseif menu_idx == 2 then
+        while not in_party_selected() do
+        	joypad.setanalog({
+                ["Touch X"] = 180,
+                ["Touch Y"] = 30,
+            })
+            advance_frames({["Touch"] = "True"}, 15)
+            advance_frames({}, 1)
+        end
+
+    elseif menu_idx == 3 then
+        while not in_party_selected() do
+            joypad.setanalog({
+                ["Touch X"] = 120,
+                ["Touch Y"] = 60,
+            })
+            advance_frames({["Touch"] = "True"}, 15)
+            advance_frames({}, 1)
+        end
+
     else
         print("Failed to switch: could not find menu_idx for party_idx="..party_idx)
+        return false
     end
-    -- select pokemon
-    advance_frames({}, 1)
-    advance_frames({A = "True"}, 15)
-    advance_frames({}, 1)
-    advance_frames({A = "True"}, 15)
-    advance_frames({}, 300) -- buffer while pokemon switches in
+    -- confirm menu selection
+    print("Selecting menu_idx="..menu_idx.." for party_idx="..party_idx)
+    while in_party_menu() do
+        joypad.setanalog({
+            ["Touch X"] = 120,
+            ["Touch Y"] = 75,
+        })
+        advance_frames({["Touch"] = "True"}, 15)
+        advance_frames({}, 1)
+    end
+
     return true
 end
 
 local function perform_move(move_idx)
     -- advance into move menu
-    advance_frames({A = "True"}, 18)
-    advance_frames({}, 1)
+    if in_battle_menu() then
+        print("Moving to move selection menu...")
+    	while in_battle_menu() do
+    		advance_frames({A = "True"}, 1)
+            advance_frames({}, 1)
+    	end
+    end
+
     -- select chosen move using analog controls
     if move_idx == 1 then
     	joypad.setanalog({
@@ -709,19 +772,17 @@ local function perform_move(move_idx)
         })
         advance_frames({["Touch"] = "True"}, 15)
     end
-    -- buffer while move is performed
-    advance_frames({}, 50)
-    advance_frames({A = "True"}, 15)
-    advance_frames({}, 1)
+
     -- did the move fail?
-    if is_battle_turn() then
+    if in_move_failure() then
         print("Move failed...")
-        advance_frames({B = "True"}, 20)
-        advance_frames({}, 1)
-        advance_frames({B = "True"}, 20)
-        advance_frames({}, 1)
+        while not in_battle_menu() do
+        	advance_frames({B = "True"}, 20)
+            advance_frames({}, 1)
+        end
     	return false
     end
+    print("Performing move...")
     return true
 end
 
@@ -755,6 +816,7 @@ local function finished_check()
         end
         battle_number = battle_number + 1
         ally_deaths = 0
+        turn = 1
         reset_ttl()
         refresh_gui()
     end
@@ -835,14 +897,17 @@ end
 local function battle_turn_check()
     if is_battle_turn() then
         has_battled = 1 -- has battled this round
-        -- buffer while main battle menu loads
-        advance_frames({}, 200)
-        advance_frames({B = "True"}, 1) -- get out of analog mode
-        advance_frames({}, 1)
+        -- buffer while battle menu loads
+        print("\nBattle turn #: "..turn)
+        while not (in_battle_menu() or in_party_menu()) do
+        	advance_frames({B = "True"}, 1) -- get out of analog mode
+            advance_frames({}, 1)
+        end
+
         -- evaluate action weights
         local output = eval_state()
         local action_weights = sort_actions({table.unpack(output, 1, 7)}) -- sort all relevant action weights
-        print("\nAction Priorities:")
+        print("Action Priorities:")
         for k,v in ipairs(action_weights) do print(k, v) end
         -- attempt to perform next best action
         local attempt_idx = 1
@@ -880,6 +945,7 @@ local function battle_turn_check()
                 break
             end
         end
+        turn = turn + 1
     end
 end
 
@@ -900,6 +966,7 @@ function GameLoop()
     battle_number = 1
     round_number = 1
     fitness = 0.0
+    turn = 1
     has_battled = 0  -- reset each round
     input_state = table.shallow_copy(INPUTSTATE_STRUCT)
 
