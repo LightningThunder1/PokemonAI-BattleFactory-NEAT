@@ -29,6 +29,9 @@ class EvaluationServer:
     FITNESS_HEADER = b"FITNESS:"
 
     def __init__(self, game_mode: str):
+        self.client_pid = None  # emulator client process ID
+
+        # set game mode params
         if game_mode == "open_world":
             self.EVAL_SCRIPT = "./src/eval_openworld.lua"
             self.ACTIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
@@ -37,7 +40,7 @@ class EvaluationServer:
             # self.ACTIONS = ['B', 'A', 'Up', 'Down', 'Left', 'Right']
             self.ACTIONS = ['Move1', 'Move2', 'Move3', 'Move4', 'Poke1', 'Poke2', 'Poke3', 'Poke4', 'Poke5', 'Poke6']
 
-    def eval_genomes(self, genomes, config) -> None:
+    def eval_genomes(self, genomes, config, gen_id) -> None:
         """
         Evaluates a population of genomes.
         """
@@ -51,8 +54,7 @@ class EvaluationServer:
             s.listen()
 
             # spawn agent
-            client_process = self.spawn_client()
-            print("Spawned emulator client.")
+            self.client_pid = self.spawn_client().pid
 
             # wait for agent to connect to socket
             client, addr = s.accept()
@@ -60,10 +62,10 @@ class EvaluationServer:
                 print(f"Connected by {addr}.")
                 try:
                     # evaluate each genome
-                    for _id, genome in genomes:
+                    for idx, (_id, genome) in enumerate(genomes):
                         # create NN from genome
                         nn = neat.nn.FeedForwardNetwork.create(genome, config)
-                        print(f"\nGenome #: {_id}")
+                        print(f"\n[Gen #: {gen_id}, Index #: {idx}, Genome #: {_id}]")
 
                         # wait for client to be ready
                         while True:
@@ -86,10 +88,10 @@ class EvaluationServer:
 
                 except Exception as e:
                     print(e)
-                    os.killpg(os.getpgid(client_process.pid), signal.SIGTERM)
+                    self.kill_client(self.client_pid)
 
             # close server
-            os.killpg(os.getpgid(client_process.pid), signal.SIGTERM)  # Send the signal to all the process groups
+            self.kill_client(self.client_pid)
             s.shutdown(socket.SHUT_RDWR)
             s.close()
 
@@ -100,6 +102,7 @@ class EvaluationServer:
         print("Evaluating genome...")
         # init fitness
         fitness = 0.0
+        ttl = 360  # kill client if unresponsive
 
         # repeat game loop
         while True:
@@ -207,11 +210,20 @@ class EvaluationServer:
     def spawn_client(self):
         """
         Spawns the emulator process and starts the eval_client.lua script.
-        :return: None
+        :return: Process ID
         """
+        print("Spawning emulator client process...")
         return subprocess.Popen([
             self.EMU_PATH,
             f'--socket_port={self.PORT}',
             f'--socket_ip={self.HOST}',
             f'--lua={os.path.abspath(self.EVAL_SCRIPT)}'
         ], preexec_fn=os.setsid)
+
+    def kill_client(self, pid):
+        """
+        Kills the emulator client process group.
+        :return: None
+        """
+        # Send the signal to all the process groups
+        os.killpg(os.getpgid(pid), signal.SIGTERM)
