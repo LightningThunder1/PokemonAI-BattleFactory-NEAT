@@ -35,7 +35,7 @@ class EvaluationServer:
         socket.setdefaulttimeout(300)  # default socket timeout
         self.evaluated_genomes = []  # track evaluated genomes if socket timeout occurs
         self.genome_finished = False  # global var for evaluating genomes
-        self.debug_id = 59  # for debugging specific genomes
+        self.debug_id = -1  # for debugging specific genomes
 
         logging.basicConfig(
             filename="./logs/eval_server.log",
