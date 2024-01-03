@@ -49,6 +49,7 @@ local turn
 
 -- options
 local FORCE_MOVES = false
+local LOAD_SLOT = 2
 
 -- orderings of shuffled pokemon data blocks from shift-values
 local SHUFFLE_ORDER = {
@@ -395,6 +396,10 @@ local function in_battle_room()
     return memory.read_u16_le(gp + MODE_OFFSET) == MODE_BATTLEROOM
 end
 
+local function in_transition()
+    return memory.read_u16_le(gp + MODE_OFFSET) == MODE_NA
+end
+
 local function in_trade_menu()
     return memory.read_u16_le(gp + TRADEMENU_OFFSET) == MODE_TRADEMENU
 end
@@ -432,7 +437,9 @@ local function in_party_selected()
 end
 
 local function game_state()
-	if in_trade_menu() and has_battled == 0 then
+    if in_transition() then
+    	return STATE_NA
+	elseif in_trade_menu() and has_battled == 0 then
 		return STATE_INIT
 	elseif ((not is_outside()) and (not is_trading())) or in_battle_room() then
 	    return STATE_BATTLE
@@ -949,6 +956,7 @@ local function battle_turn_check()
     end
 end
 
+
 -- ####################################
 -- ####         GAME LOOP          ####
 -- ####################################
@@ -971,10 +979,15 @@ function GameLoop()
     input_state = table.shallow_copy(INPUTSTATE_STRUCT)
 
     -- load save state
-    print("Loading save slot 1...")
-    savestate.loadslot(1)
+    print("Loading save slot "..LOAD_SLOT.."...")
+    savestate.loadslot(LOAD_SLOT)
     gp = memory.read_u32_le(0x02101D2C)
+    -- client.invisibleemulation(true)
     refresh_gui()
+
+    -- register death check callbacks
+    -- event.on_bus_write(death_check, gp + ACTIVE_ENEMY_OFFSET + BLOCK_B.HP)
+    -- event.on_bus_write(death_check, gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
 
     -- loop until a round is lost or TTL runs out
     while true do
