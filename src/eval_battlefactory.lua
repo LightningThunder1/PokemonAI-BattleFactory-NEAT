@@ -519,6 +519,16 @@ local function read_inputstate()
                 if v.Stats.HP <= 0 then
                     log("Active enemy is dead! "..v.ID)
                     while not (is_battle_turn() or in_battle_room()) do
+                        -- check active ally again
+                        if memory.read_u16_le(active_ally_ptr + BLOCK_B.HP) <= 0 then
+                        	print("Active ally is also dead!")
+                        	for _,a in pairs(input_state.AllyParty) do
+                                if a.ID == active_ally_id then
+                                    read_unencrypted_pokemon(active_ally_ptr, BLOCK_B, 0, a)
+                                end
+                            end
+                        	break
+                        end
                     	advance_frames({A = "True"}, 1)
                         advance_frames({}, 5)
                     end
@@ -569,10 +579,12 @@ local function death_check()
     for k,v in pairs(input_state.AllyParty) do
     	if v.ID ~= 0 and v.Stats.HP <= 0 then ally_deaths = ally_deaths + 1 end
     end
+    refresh_gui()
 end
 
 local function calculate_fitness()
     fitness = (enemy_deaths * enemy_deaths) + ((battle_number - 1) * 2.5) + ((round_number - 1) * 5.0)
+    refresh_gui()
 end
 
 local function str_to_table(str)
@@ -906,9 +918,13 @@ local function battle_turn_check()
         has_battled = 1 -- has battled this round
         -- buffer while battle menu loads
         log("Battle turn #: "..turn)
-        while not (in_battle_menu() or in_party_menu()) do
+        while is_battle_turn() and not (in_battle_menu() or in_party_menu()) do
         	advance_frames({B = "True"}, 1) -- get out of analog mode
             advance_frames({}, 1)
+        end
+        if not is_battle_turn() then
+            log("No longer my battle turn?")
+        	return
         end
 
         -- evaluate action weights
@@ -989,7 +1005,6 @@ function GameLoop()
         -- check game state
         death_check()
         calculate_fitness()
-        refresh_gui()
         -- is evaluation over?
         if finished_check() then
             break
