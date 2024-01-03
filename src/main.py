@@ -38,8 +38,8 @@ class Trainer:
         stats = neat.StatisticsReporter()
         self.p.add_reporter(stats)
         self.p.add_reporter(checkpointer)
-        print(f"Starting generation: {self.p.generation}")
-        print(f"Starting population size: {len(self.p.population)}")
+        print(f"Init generation #: {self.p.generation}")
+        print(f"Init population size #: {len(self.p.population)}")
 
         # Run for up to 300 generations.
         print("Starting run...")

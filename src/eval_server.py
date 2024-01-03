@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import signal
 import socket
@@ -17,21 +18,31 @@ import sys
 
 
 class EvaluationServer:
-
+    # consts
     HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
     PORT = 0  # Port to listen on (non-privileged ports are > 1023)
     EMU_PATH = '/home/javen/Desktop/PokeDS/BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
     KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
-    PNG_HEADER = b"\x89PNG"
-    BF_STATE_HEADER = b"BF_STATE"
+    PNG_HEADER = (b"\x89PNG", 7)
+    BF_STATE_HEADER = (b"BF_STATE", 8)
     READY_STATE = b"5 READY"
     FINISH_STATE = b"8 FINISHED"
-    FITNESS_HEADER = b"FITNESS:"
+    FITNESS_HEADER = (b"FITNESS:", 8)
+    LOG_HEADER = (b"LOG:", 4)
 
     def __init__(self, game_mode: str):
         self.client_pid = None  # emulator client process ID
         socket.setdefaulttimeout(30)  # default socket timeout
         self.evaluated_genomes = []  # track evaluated genomes if socket timeout occurs
+        self.genome_finished = False  # global var for evaluating genomes
+
+        logging.basicConfig(
+            filename="./logs/eval_server.log",
+            filemode='a',
+            format='%(asctime)s %(levelname)s %(message)s',
+            datefmt='%H:%M:%S',
+            level=logging.DEBUG
+        )
 
         # set game mode params
         if game_mode == "open_world":
@@ -47,13 +58,13 @@ class EvaluationServer:
         Evaluates a population of genomes.
         """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            print("Initializing socket server...")
+            logging.info("Initializing socket server...")
 
             # bind socket server
             self.PORT = 0  # reset port
             s.bind((self.HOST, self.PORT))
             self.PORT = s.getsockname()[1]
-            print(f'Socket server: listening on port {self.PORT }')
+            logging.info(f'Socket server: listening on port {self.PORT }')
             s.listen()
 
             # spawn agent
@@ -62,9 +73,9 @@ class EvaluationServer:
             # wait for agent to connect to socket
             client, addr = s.accept()
             with client:
-                print(f"Connected by {addr}.")
+                logging.info(f"Connected by {addr}.")
                 try:
-                    print(f"Beginning generation evaluation: completed={len(self.evaluated_genomes)}, total={len(genomes)}")
+                    logging.info(f"Beginning generation evaluation: completed={len(self.evaluated_genomes)}, total={len(genomes)}\n")
                     # evaluate each genome
                     for idx, (_id, genome) in enumerate(genomes):
                         # check if genome was already evaluated
@@ -73,7 +84,7 @@ class EvaluationServer:
 
                         # create NN from genome
                         nn = neat.nn.FeedForwardNetwork.create(genome, config)
-                        print(f"\n[Gen #: {gen_id}, Index #: {len(self.evaluated_genomes)}/{len(genomes)-1}, Genome #: {_id}]")
+                        logging.info(f"[Gen #: {gen_id}, Index #: {len(self.evaluated_genomes)}/{len(genomes)-1}, Genome #: {_id}]")
 
                         # wait for client to be ready
                         while True:
@@ -81,7 +92,7 @@ class EvaluationServer:
                             if not data:
                                 raise ConnectionClosedException
                             if data == self.READY_STATE:
-                                print("Client is ready to evaluate next genome.")
+                                logging.info("Client is ready to evaluate next genome.")
                                 client.sendall(self.READY_STATE)
                                 break
 
@@ -94,16 +105,18 @@ class EvaluationServer:
                     # send finish state to client
                     data = client.recv(1024)
                     client.sendall(self.FINISH_STATE)
-                    print("\nFinished evaluating genomes.")
+                    logging.info("Finished evaluating genomes.\n")
 
                 except (ConnectionClosedException, KeyboardInterrupt) as e:
                     self.close_server(s)
+                    logging.error("Program interruption! Exiting...\n")
                     sys.exit(e)
                 except socket.timeout as e:
-                    print("Socket timed out while evaluating genome!\n")
+                    logging.error("Socket timed out while evaluating genome!\n")
                     self.close_server(s)
                     return False
                 except Exception as e:
+                    logging.error(str(e))
                     self.close_server(s)
                     sys.exit(str(e))
 
@@ -112,16 +125,17 @@ class EvaluationServer:
             self.evaluated_genomes = []  # reset evaluated genomes
             return True
 
-    def _eval(self, client, nn: FeedForwardNetwork) -> float:
+    def _eval(self, client, net: FeedForwardNetwork) -> float:
         """
         Evaluates a single genome.
         """
-        print("Evaluating genome...")
+        logging.info("Evaluating genome...")
         # init fitness
         fitness = 0.0
+        self.genome_finished = False
 
         # repeat game loop
-        while True:
+        while not self.genome_finished:
             # receive client buffered message
             data = client.recv(8192)
 
@@ -129,56 +143,76 @@ class EvaluationServer:
             if not data:
                 raise ConnectionClosedException
 
-            # calculate message data index
-            m_index = self.calculate_mindex(data)
+            # Parse received data into individual message(s) and process
+            for msg in self._parse_msgs(data):
 
-            # is msg a fitness score?
-            if data[m_index:m_index + 8] == self.FITNESS_HEADER:
-                print("Client is finished evaluating genome.")
-                fitness = float(data[m_index + 8:])
-                break
+                # is msg a fitness score?
+                if msg[:self.FITNESS_HEADER[1]] == self.FITNESS_HEADER[0]:
+                    logging.info("Client is finished evaluating genome.")
+                    fitness = float(msg[self.FITNESS_HEADER[1]:])
+                    self.genome_finished = True
 
-            # is msg a battle factory input state?
-            if data[m_index:m_index + 8] == self.BF_STATE_HEADER:
-                # print("Processing BF state...")
-                # read and sort input state
-                bf_state = json.loads(data[m_index + 8:])
-                bf_state = self.sort_dict(bf_state)
-                # print(json.dumps(bf_state, indent=4))
+                # is msg a log?
+                elif msg[:self.LOG_HEADER[1]] == self.LOG_HEADER[0]:
+                    logging.debug(msg[self.LOG_HEADER[1]:])
 
-                # flatten input state
-                bf_state = self.flatten_dict(bf_state)
-                input_layer = np.array(list(bf_state.values()))
+                # is msg a battle factory input state?
+                elif msg[:self.BF_STATE_HEADER[1]] == self.BF_STATE_HEADER[0]:
+                    output_msg = self._ff_game_state(
+                        msg[self.BF_STATE_HEADER[1]:], net
+                    )
+                    # respond with output message
+                    client.sendall(b'' + bytes(f"{len(output_msg)} {output_msg}", 'utf-8'))
 
-                # forward feed
-                output_layer = nn.activate(input_layer)
-                output_msg = "{ " + ", ".join([str(round(x, 10)) for x in output_layer]) + " }"
-                # print(output_msg)
-
-                # respond with output message
-                client.sendall(b'' + bytes(f"{len(output_msg)} {output_msg}", 'utf-8'))
-
-            # is msg a state screenshot?
-            if data[m_index:m_index + 4] == self.PNG_HEADER:
-                # print("Processing state screenshot...")
-                outputs = self._ff_screenshot(data[m_index:], nn)
-                decision = self.ACTIONS[outputs.index(max(outputs))]
-                # decision = random.choice(self.DECISIONS)
-
-                # respond to client with decision
-                # print(f"Decision: {decision}")
-                client.sendall(b'' + bytes(f"{len(decision)} {decision}", 'utf-8'))
+                # is msg a state screenshot?
+                elif msg[:self.PNG_HEADER[1]] == self.PNG_HEADER[0]:
+                    decision = self._ff_screenshot(msg, net)
+                    # respond to client with decision
+                    client.sendall(b'' + bytes(f"{len(decision)} {decision}", 'utf-8'))
 
         # return fitness score
-        print(f"Genome fitness: {fitness}")
+        logging.info(f"Genome fitness: {fitness}\n")
         return fitness
 
-    def _ff_screenshot(self, png_data, nn):
+    @classmethod
+    def _parse_msgs(cls, _msg) -> [bytes]:
+        """
+        Parse received client data into individual message(s).
+        """
+        if not _msg:
+            return []
+        split = _msg.split(b" ", 1)
+        size = int(split[0])
+        return [split[1][:size]] + cls._parse_msgs(split[1][size:])
+
+    def _ff_game_state(self, state: bytes, net: FeedForwardNetwork) -> str:
+        """
+        Forward-feeds game state bytes through genome neural network.
+        """
+        logging.info("Evaluating game state...")
+        # read and sort input state
+        bf_state = json.loads(state)
+        bf_state = self.sort_dict(bf_state)
+        # logging.info(json.dumps(bf_state, indent=4))
+
+        # flatten input state
+        bf_state = self.flatten_dict(bf_state)
+        logging.debug(bf_state)
+        input_layer = np.array(list(bf_state.values()))
+
+        # forward feed
+        output_layer = net.activate(input_layer)
+        output_msg = "{ " + ", ".join([str(round(x, 10)) for x in output_layer]) + " }"
+        logging.debug(output_msg)
+        return output_msg
+
+    def _ff_screenshot(self, png: bytes, net: FeedForwardNetwork):
         """
         Forward-feeds screenshot data through genome neural network.
         """
+        logging.info("Evaluating game screenshot...")
         # read image and convert to grayscale
-        img = PIL.Image.open(io.BytesIO(png_data)).convert('L')
+        img = PIL.Image.open(io.BytesIO(png)).convert('L')
         # img.show()
         im = np.array(img)
 
@@ -188,13 +222,14 @@ class EvaluationServer:
 
         # reduce image dimensions
         im = block_reduce(im, block_size=(4, 4), func=np.average)
-        # print(im.shape)
+        # logging.info(im.shape)
         # PIL.Image.fromarray(im).show()
 
         # forward feed
         im = im.reshape(-1)
-        outputs = nn.activate(im)
-        return outputs
+        outputs = net.activate(im)
+        decision = self.ACTIONS[outputs.index(max(outputs))]
+        return decision
 
     @classmethod
     def sort_dict(cls, item: dict):
@@ -228,7 +263,7 @@ class EvaluationServer:
         Spawns the emulator process and starts the eval_client.lua script.
         :return: Process ID
         """
-        print("Spawning emulator client process...")
+        logging.info("Spawning emulator client process...")
         return subprocess.Popen([
             self.EMU_PATH,
             f'--socket_port={self.PORT}',

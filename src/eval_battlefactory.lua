@@ -143,6 +143,11 @@ local BLOCK_B = {  -- 192 bytes
     CONFUSED = 0x70,
 }
 
+local function log(msg)
+    -- print(msg)
+    comm.socketServerSend("LOG:"..tostring(msg))
+end
+
 -- copy table data structures
 function table.shallow_copy(t)
 	local t2 = {}
@@ -195,7 +200,7 @@ local function decrypt(seed, addr, words)
 		X[n+1] = mult32(X[n], 0x41C64E6D) + 0x6073
 		D[n] = memory.read_u16_le(addr + ((n - 1) * 0x02))
 		D[n] = D[n] ~ (X[n+1] >> 16)
-		-- print(n, string.format("%X", D[n]))
+		-- log(n, string.format("%X", D[n]))
 	end
 	return D
 end
@@ -209,9 +214,9 @@ local function read_pokemon(ptr, party_idx)
 	local pid = memory.read_u32_le(ptr + 0x0)
 	local checksum = memory.read_u16_le(ptr + 0x06)
 	local shift = tostring(((pid & 0x3E000) >> 0xD) % 24)
-	-- print("PID:", pid)
-	-- print("Checksum:", checksum)
-	-- print("Shift:", shift)
+	-- log("PID:", pid)
+	-- log("Checksum:", checksum)
+	-- log("Shift:", shift)
 
 	-- decrypt pokemon bytes
 	local D = decrypt(checksum, ptr + 0x08, 64) -- data
@@ -327,19 +332,19 @@ local function read_unencrypted_pokemon(ptr, offsets, party_idx, pk)
     return pk
 end
 
-local function print_pokemon(pokemon)
-    print(pokemon)
-    print("MOVES")
-    print(pokemon.Moves[1])
-    print(pokemon.Moves[2])
-    print(pokemon.Moves[3])
-    print(pokemon.Moves[4])
-    print("STATS")
-    print(pokemon.Stats)
-    print("EVs")
-    print(pokemon.EVs)
-    -- print("IVs")
-    -- print(pokemon.IVs)
+local function log_pokemon(pokemon)
+    log(pokemon)
+    log("MOVES")
+    log(pokemon.Moves[1])
+    log(pokemon.Moves[2])
+    log(pokemon.Moves[3])
+    log(pokemon.Moves[4])
+    log("STATS")
+    log(pokemon.Stats)
+    log("EVs")
+    log(pokemon.EVs)
+    -- log("IVs")
+    -- log(pokemon.IVs)
 end
 
 local function refresh_gui()
@@ -363,8 +368,8 @@ local function advance_frames(instruct, cnt)
     end
 end
 
-local function serialize_table(tabl, indent)
-    local nl = string.char(10) -- newline
+local function serialize_table(tabl, indent, nl)
+    nl = nl or string.char(10) -- newline
     indent = indent and (indent.."  ") or ""
     local str = ''
     str = str .. indent.."{"
@@ -512,7 +517,7 @@ local function read_inputstate()
                 v.Active = 1
                 -- buffer if active enemy is dying to prevent double counting enemy deaths
                 if v.Stats.HP <= 0 then
-                    print("Active enemy is dead! "..v.ID)
+                    log("Active enemy is dead! "..v.ID)
                     while not (is_battle_turn() or in_battle_room()) do
                     	advance_frames({A = "True"}, 1)
                         advance_frames({}, 5)
@@ -606,7 +611,7 @@ local function init_pokemon(indices)
     -- rent each pokemon by index
     for k,idx in pairs(indices) do
         local dist = idx - menu_index
-        print("Selecting init pokemon #"..idx)
+        log("Selecting init pokemon #"..idx)
         -- advance to next index
         if dist ~= 0 then
             local dir
@@ -634,7 +639,7 @@ local function init_pokemon(indices)
 end
 
 local function trade_pokemon(ally_idx, enemy_idx)
-    print("Trading ally_idx="..ally_idx.." for enemy_idx="..enemy_idx)
+    log("Trading ally_idx="..ally_idx.." for enemy_idx="..enemy_idx)
     -- first select ally pokemon
     local dist = ally_idx - 1
     for i=0,math.abs(dist)-1,1 do
@@ -664,23 +669,19 @@ local function switch_active(party_idx)
     -- TODO account for moves that prevent switching
     -- is the given party member dead?
     if input_state.AllyParty[party_idx].Stats.HP <= 0 then
-        print("Failed to switch: party_idx="..party_idx.." is already dead!")
-        --while not in_party_menu() do
-        --	advance_frames({B = "True"}, 1)
-        --    advance_frames({}, 1)
-        --end
+        log("Failed to switch: party_idx="..party_idx.." is already dead!")
     	return false
     end
 
     -- is the given party member already active?
     if input_state.AllyParty[party_idx].Active == 1 then
-        print("Failed to switch: party_idx="..party_idx.." is already active!")
+        log("Failed to switch: party_idx="..party_idx.." is already active!")
     	return false
     end
 
     -- first move to party selection menu
     if in_battle_menu() then
-        print("Moving to party selection menu...")
+        log("Moving to party selection menu...")
         while not in_party_menu() do
             joypad.setanalog({
                 ["Touch X"] = 200,
@@ -703,7 +704,7 @@ local function switch_active(party_idx)
 
     -- reposition menu selection
     if menu_idx == 1 then
-    	print("Failed to switch: party_idx="..party_idx.." is already active! (menu_idx=1)")
+    	log("Failed to switch: party_idx="..party_idx.." is already active! (menu_idx=1)")
         return false
     elseif menu_idx == 2 then
         while not in_party_selected() do
@@ -726,11 +727,11 @@ local function switch_active(party_idx)
         end
 
     else
-        print("Failed to switch: could not find menu_idx for party_idx="..party_idx)
+        log("Failed to switch: could not find menu_idx for party_idx="..party_idx)
         return false
     end
     -- confirm menu selection
-    print("Selecting menu_idx="..menu_idx.." for party_idx="..party_idx)
+    log("Selecting menu_idx="..menu_idx.." for party_idx="..party_idx)
     while in_party_menu() do
         joypad.setanalog({
             ["Touch X"] = 120,
@@ -746,7 +747,7 @@ end
 local function perform_move(move_idx)
     -- advance into move menu
     if in_battle_menu() then
-        print("Moving to move selection menu...")
+        log("Moving to move selection menu...")
     	while in_battle_menu() do
     		advance_frames({A = "True"}, 1)
             advance_frames({}, 1)
@@ -782,14 +783,14 @@ local function perform_move(move_idx)
 
     -- did the move fail?
     if in_move_failure() then
-        print("Move failed...")
+        log("Move failed...")
         while not in_battle_menu() do
         	advance_frames({B = "True"}, 20)
             advance_frames({}, 1)
         end
     	return false
     end
-    print("Performing move...")
+    log("Performing move...")
     return true
 end
 
@@ -797,20 +798,20 @@ end
 local function finished_check()
     -- battle lost?
     if ttl <= 0 or ally_deaths >= 3 then
-        print("Battle lost: ttl="..ttl..", ally_deaths="..ally_deaths)
+        log("Battle lost: ttl="..ttl..", ally_deaths="..ally_deaths)
         return true
     end
     -- battle forfeit?
     if forfeit_check() then
-        print("Battle forfeit.")
+        log("Battle forfeit.")
         return true
     end
     -- battle won?
     if enemy_deaths >= (3 * battle_number) then
-        print("Battle won! "..battle_number)
+        log("Battle won! "..battle_number)
         -- round also won?
         if battle_number % 7 == 0 then
-            print("Round won! "..round_number)
+            log("Round won! "..round_number)
             round_number = round_number + 1
             has_battled = 0
             input_state = table.shallow_copy(INPUTSTATE_STRUCT)
@@ -848,22 +849,21 @@ local function trade_menu_check()
         advance_frames({}, 200) -- buffer while menu loads
         if game_state() == STATE_INIT then
             -- select init pokemon
-            print("\nSelecting initial pokemon...")
+            log("Selecting initial pokemon...")
             init_pokemon({ team_weights[1], team_weights[2], team_weights[3] })  -- select top 3 pokemon choices
         else
-            print("\nTrading team members...")
+            log("Trading team members: "..serialize_table(team_weights, "", ""))
             -- are any enemy pokemon weighted higher than any ally?
             local enemy_idx = math.huge
             local ally_idx = -math.huge
             for k,v in ipairs(team_weights) do
-                print(k, v)
             	if v <= 3 then
                     ally_idx = math.max(k, ally_idx)  -- worst ally
             	else
             	    enemy_idx = math.min(k, enemy_idx) -- best enemy
             	end
             end
-            print("enemy_idx="..enemy_idx.." , ally_idx="..ally_idx)
+            log("enemy_idx="..enemy_idx..", ally_idx="..ally_idx)
             if enemy_idx < ally_idx then
                 -- trade worst ally with best enemy
             	enemy_idx = team_weights[enemy_idx] - 3
@@ -871,7 +871,7 @@ local function trade_menu_check()
                 trade_pokemon(ally_idx, enemy_idx)
             else
                 -- cancel trade
-                print("No trade was made.")
+                log("No trade was made.")
                 advance_frames({["Down"] = "True"}, 5)
                 advance_frames({}, 1)
                 advance_frames({A = "True"}, 5)
@@ -905,7 +905,7 @@ local function battle_turn_check()
     if is_battle_turn() then
         has_battled = 1 -- has battled this round
         -- buffer while battle menu loads
-        print("\nBattle turn #: "..turn)
+        log("Battle turn #: "..turn)
         while not (in_battle_menu() or in_party_menu()) do
         	advance_frames({B = "True"}, 1) -- get out of analog mode
             advance_frames({}, 1)
@@ -914,41 +914,40 @@ local function battle_turn_check()
         -- evaluate action weights
         local output = eval_state()
         local action_weights = sort_actions({table.unpack(output, 1, 7)}) -- sort all relevant action weights
-        print("Action Priorities:")
-        for k,v in ipairs(action_weights) do print(k, v) end
+        log("Action Priorities: "..serialize_table(action_weights, "", ""))
         -- attempt to perform next best action
         local attempt_idx = 1
         local turn_success = false
         while not turn_success do
-            print("Attempt_idx="..attempt_idx)
+            log("Attempt_idx="..attempt_idx)
             -- first check if active pokemon is dead
             local active_hp = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
             if active_hp <= 0 then
                 local team_weights = sort_actions({table.unpack(output, 5, 7)}) -- sort team member weights
-                print("Active pokemon is dead: attempting switch to party_idx="..team_weights[attempt_idx])
+                log("Active pokemon is dead! Attempting switch to party_idx="..team_weights[attempt_idx])
                 turn_success = switch_active(team_weights[attempt_idx])
             elseif FORCE_MOVES then
                 local move_weights = sort_actions({table.unpack(output, 1, 4)}) -- sort move weights
-                print("Forcing move #"..move_weights[attempt_idx])
+                log("Forcing move_idx="..move_weights[attempt_idx])
                 turn_success = perform_move(move_weights[attempt_idx])
             else
                 -- attempt moves in chosen priority
                 local action_idx = action_weights[attempt_idx]
-                print("Action_idx="..action_idx)
+                log("Action_idx="..action_idx)
                 if action_idx <= 4 then
                     -- move decision
-                    print("Performing move #"..action_idx)
+                    log("Performing move_idx="..action_idx)
                     turn_success = perform_move(action_idx)
                 else
                     -- switch decision
-                    print("Switching to party_idx="..action_idx - 4)
+                    log("Switching to party_idx="..action_idx - 4)
                     turn_success = switch_active(action_idx - 4)
                 end
             end
             -- try next best action
             attempt_idx = attempt_idx + 1
             if attempt_idx > 7 then
-                print("Failed to perform any action!")
+                log("Failed to perform any action!")
                 break
             end
         end
@@ -960,12 +959,8 @@ end
 -- ####################################
 -- ####         GAME LOOP          ####
 -- ####################################
-print("Is client connected to socket server?")
-print(comm.socketServerIsConnected())
-print(comm.socketServerGetInfo())
-
 function GameLoop()
-    print("Beginning game loop...")
+    log("Beginning game loop...")
 
     -- initialize global vars
     reset_ttl()
@@ -979,7 +974,7 @@ function GameLoop()
     input_state = table.shallow_copy(INPUTSTATE_STRUCT)
 
     -- load save state
-    print("Loading save slot "..LOAD_SLOT.."...")
+    log("Loading save slot "..LOAD_SLOT.."...")
     savestate.loadslot(LOAD_SLOT)
     gp = memory.read_u32_le(0x02101D2C)
     -- client.invisibleemulation(true)
@@ -1009,15 +1004,16 @@ function GameLoop()
     end
 
     -- end game loop
-    console.clear()
-    print("Finished game loop.")
-    print("Fitness: "..fitness)
-    print("\n")
+    log("Finished game loop.")
     comm.socketServerSend("FITNESS:"..fitness)
+    advance_frames({}, 250) -- buffer while server prepares
     return fitness
 end
 
 -- repeat game loop until evaluation server finishes
+print("Is client connected to socket server?")
+print(comm.socketServerIsConnected())
+print(comm.socketServerGetInfo())
 while true do
     comm.socketServerSend("READY")
     local server_state = comm.socketServerResponse()
