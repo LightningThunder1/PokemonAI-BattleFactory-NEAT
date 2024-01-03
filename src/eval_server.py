@@ -32,9 +32,10 @@ class EvaluationServer:
 
     def __init__(self, game_mode: str):
         self.client_pid = None  # emulator client process ID
-        socket.setdefaulttimeout(30)  # default socket timeout
+        socket.setdefaulttimeout(300)  # default socket timeout
         self.evaluated_genomes = []  # track evaluated genomes if socket timeout occurs
         self.genome_finished = False  # global var for evaluating genomes
+        self.debug_id = 59  # for debugging specific genomes
 
         logging.basicConfig(
             filename="./logs/eval_server.log",
@@ -75,16 +76,23 @@ class EvaluationServer:
             with client:
                 logging.info(f"Connected by {addr}.")
                 try:
-                    logging.info(f"Beginning generation evaluation: completed={len(self.evaluated_genomes)}, total={len(genomes)}\n")
+                    log = f"Beginning generation evaluation: completed={len(self.evaluated_genomes)}, total={len(genomes)}\n"
+                    logging.info(log)
+                    print(log)
                     # evaluate each genome
                     for idx, (_id, genome) in enumerate(genomes):
+                        # does this match the debug genome?
+                        if 0 <= self.debug_id != _id:
+                            continue
                         # check if genome was already evaluated
                         if _id in self.evaluated_genomes:
                             continue
 
                         # create NN from genome
-                        nn = neat.nn.FeedForwardNetwork.create(genome, config)
-                        logging.info(f"[Gen #: {gen_id}, Index #: {len(self.evaluated_genomes)}/{len(genomes)-1}, Genome #: {_id}]")
+                        net = neat.nn.FeedForwardNetwork.create(genome, config)
+                        log = f"[Gen #: {gen_id}, Index #: {len(self.evaluated_genomes)}/{len(genomes)-1}, Genome #: {_id}]"
+                        logging.info(log)
+                        print(log)
 
                         # wait for client to be ready
                         while True:
@@ -97,15 +105,22 @@ class EvaluationServer:
                                 break
 
                         # begin genome evaluation
-                        fitness = self._eval(client, nn)
+                        fitness = self._eval(client, net)
+
                         # successful evaluation
                         genome.fitness = fitness
                         self.evaluated_genomes.append(_id)
+
+                        # exit program if debugging
+                        if self.debug_id >= 0:
+                            self.close_server(s)
+                            sys.exit("Finished debugging genome.")
 
                     # send finish state to client
                     data = client.recv(1024)
                     client.sendall(self.FINISH_STATE)
                     logging.info("Finished evaluating genomes.\n")
+                    print("Finished evaluating genomes.\n")
 
                 except (ConnectionClosedException, KeyboardInterrupt) as e:
                     self.close_server(s)
@@ -113,6 +128,7 @@ class EvaluationServer:
                     sys.exit(e)
                 except socket.timeout as e:
                     logging.error("Socket timed out while evaluating genome!\n")
+                    print(f"Socket timed out while evaluating genome! {e}\n")
                     self.close_server(s)
                     return False
                 except Exception as e:
@@ -130,6 +146,7 @@ class EvaluationServer:
         Evaluates a single genome.
         """
         logging.info("Evaluating genome...")
+        print("Evaluating genome...")
         # init fitness
         fitness = 0.0
         self.genome_finished = False
@@ -172,6 +189,7 @@ class EvaluationServer:
 
         # return fitness score
         logging.info(f"Genome fitness: {fitness}\n")
+        print(f"Genome fitness: {fitness}\n")
         return fitness
 
     @classmethod
