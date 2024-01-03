@@ -67,7 +67,9 @@ class Trainer:
         """
         Wrapper function for EvaluationServer evaluate_generation().
         """
-        self.eval_server.eval_genomes(genomes, config, self.p.generation)
+        success = False
+        while not success:
+            success = self.eval_server.eval_genomes(genomes, config, self.p.generation)
 
     @classmethod
     def get_last_ckpt(cls) -> int:

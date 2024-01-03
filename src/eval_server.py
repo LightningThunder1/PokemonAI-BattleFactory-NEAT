@@ -30,6 +30,8 @@ class EvaluationServer:
 
     def __init__(self, game_mode: str):
         self.client_pid = None  # emulator client process ID
+        socket.setdefaulttimeout(30)  # default socket timeout
+        self.evaluated_genomes = []  # track evaluated genomes if socket timeout occurs
 
         # set game mode params
         if game_mode == "open_world":
@@ -40,14 +42,15 @@ class EvaluationServer:
             # self.ACTIONS = ['B', 'A', 'Up', 'Down', 'Left', 'Right']
             self.ACTIONS = ['Move1', 'Move2', 'Move3', 'Move4', 'Poke1', 'Poke2', 'Poke3', 'Poke4', 'Poke5', 'Poke6']
 
-    def eval_genomes(self, genomes, config, gen_id) -> None:
+    def eval_genomes(self, genomes, config, gen_id) -> bool:
         """
         Evaluates a population of genomes.
         """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             print("Initializing socket server...")
-            self.PORT = 0  # reset port
+
             # bind socket server
+            self.PORT = 0  # reset port
             s.bind((self.HOST, self.PORT))
             self.PORT = s.getsockname()[1]
             print(f'Socket server: listening on port {self.PORT }')
@@ -61,17 +64,22 @@ class EvaluationServer:
             with client:
                 print(f"Connected by {addr}.")
                 try:
+                    print(f"Beginning generation evaluation: completed={len(self.evaluated_genomes)}, total={len(genomes)}")
                     # evaluate each genome
                     for idx, (_id, genome) in enumerate(genomes):
+                        # check if genome was already evaluated
+                        if _id in self.evaluated_genomes:
+                            continue
+
                         # create NN from genome
                         nn = neat.nn.FeedForwardNetwork.create(genome, config)
-                        print(f"\n[Gen #: {gen_id}, Index #: {idx}, Genome #: {_id}]")
+                        print(f"\n[Gen #: {gen_id}, Index #: {len(self.evaluated_genomes)}/{len(genomes)-1}, Genome #: {_id}]")
 
                         # wait for client to be ready
                         while True:
                             data = client.recv(1024)
                             if not data:
-                                raise Exception("Connection closed before finishing evaluation.")
+                                raise ConnectionClosedException
                             if data == self.READY_STATE:
                                 print("Client is ready to evaluate next genome.")
                                 client.sendall(self.READY_STATE)
@@ -79,21 +87,30 @@ class EvaluationServer:
 
                         # begin genome evaluation
                         fitness = self._eval(client, nn)
+                        # successful evaluation
                         genome.fitness = fitness
+                        self.evaluated_genomes.append(_id)
 
                     # send finish state to client
                     data = client.recv(1024)
                     client.sendall(self.FINISH_STATE)
                     print("\nFinished evaluating genomes.")
 
+                except (ConnectionClosedException, KeyboardInterrupt) as e:
+                    self.close_server(s)
+                    sys.exit(e)
+                except socket.timeout as e:
+                    print("Socket timed out while evaluating genome!\n")
+                    self.close_server(s)
+                    return False
                 except Exception as e:
-                    print(e)
-                    self.kill_client(self.client_pid)
+                    self.close_server(s)
+                    sys.exit(str(e))
 
-            # close server
-            self.kill_client(self.client_pid)
-            s.shutdown(socket.SHUT_RDWR)
-            s.close()
+            # successful generation evaluation
+            self.close_server(s)
+            self.evaluated_genomes = []  # reset evaluated genomes
+            return True
 
     def _eval(self, client, nn: FeedForwardNetwork) -> float:
         """
@@ -102,16 +119,15 @@ class EvaluationServer:
         print("Evaluating genome...")
         # init fitness
         fitness = 0.0
-        ttl = 360  # kill client if unresponsive
 
         # repeat game loop
         while True:
             # receive client buffered message
-            data = client.recv(30000)
+            data = client.recv(8192)
 
             # client finished sending data
             if not data:
-                raise Exception("Connection closed before finishing evaluation.")
+                raise ConnectionClosedException
 
             # calculate message data index
             m_index = self.calculate_mindex(data)
@@ -227,3 +243,17 @@ class EvaluationServer:
         """
         # Send the signal to all the process groups
         os.killpg(os.getpgid(pid), signal.SIGTERM)
+
+    def close_server(self, s):
+        """
+        Forcibly closes the socket server and client process.
+        """
+        self.kill_client(self.client_pid)
+        s.shutdown(socket.SHUT_RDWR)
+        s.close()
+
+
+class ConnectionClosedException(Exception):
+    def __init__(self, message="Client connection closed before finishing evaluation."):
+        self.message = message
+        super().__init__(self.message)
