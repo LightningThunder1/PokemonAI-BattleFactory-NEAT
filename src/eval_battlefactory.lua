@@ -47,10 +47,12 @@ local fitness
 local has_battled
 local input_state
 local turn
+local turn_failure
 
--- options
-local FORCE_MOVES = false
-local LOAD_SLOT = 2
+-- game loop options
+local FORCE_MOVES = false  -- forces move actions
+local LOAD_SLOT = 2  -- the emulator save slot to load
+local PUNISH_ACTION_FAILURES = true  -- ends run after an action failure
 
 -- orderings of shuffled pokemon data blocks from shift-values
 local SHUFFLE_ORDER = {
@@ -145,7 +147,6 @@ local BLOCK_B = {  -- 192 bytes
 }
 
 local function log(msg)
-    -- print(msg)
     comm.socketServerSend("LOG:"..tostring(msg))
 end
 
@@ -324,28 +325,12 @@ local function read_unencrypted_pokemon(ptr, offsets, party_idx, pk)
     	pk.Stats.SPEED_Boost = memory.read_u8(ptr + offsets.SPEED_BOOST)
     	pk.Stats.EVA_Boost = memory.read_u8(ptr + offsets.EVA_BOOST)
     	-- TODO pk.HeldItem
-    	-- TODO torment, taunt, weather effects?
     	pk.Moves["1"].PP = memory.read_u8(ptr + offsets.MOVE1_PP)
     	pk.Moves["2"].PP = memory.read_u8(ptr + offsets.MOVE2_PP)
     	pk.Moves["3"].PP = memory.read_u8(ptr + offsets.MOVE3_PP)
     	pk.Moves["4"].PP = memory.read_u8(ptr + offsets.MOVE4_PP)
     end
     return pk
-end
-
-local function log_pokemon(pokemon)
-    log(pokemon)
-    log("MOVES")
-    log(pokemon.Moves[1])
-    log(pokemon.Moves[2])
-    log(pokemon.Moves[3])
-    log(pokemon.Moves[4])
-    log("STATS")
-    log(pokemon.Stats)
-    log("EVs")
-    log(pokemon.EVs)
-    -- log("IVs")
-    -- log(pokemon.IVs)
 end
 
 local function refresh_gui()
@@ -446,6 +431,14 @@ local function in_party_selected()
     return memory.read_u16_le(gp + PARTY_SELECTED_OFFSET) == MODE_PARTY_SELECTED
 end
 
+local function get_active_ally_hp()
+    return memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
+end
+
+local function get_active_enemy_hp()
+    return memory.read_u16_le(gp + ACTIVE_ENEMY_OFFSET + BLOCK_B.HP)
+end
+
 local function game_state()
     if in_transition() then
     	return STATE_NA
@@ -482,6 +475,7 @@ local function read_inputstate()
             ["3"] = read_unencrypted_pokemon(enemyparty_ptr, BLOCK_A, 2),
         }
     elseif input_state.State == STATE_BATTLE then
+        -- TODO read battle conditions - weather effects, switch preventions, taunt, etc.
         -- battle state
         local active_ally_ptr = gp + ACTIVE_ALLY_OFFSET
         local active_enemy_ptr = gp + ACTIVE_ENEMY_OFFSET
@@ -525,13 +519,13 @@ local function read_inputstate()
                     log("Active enemy is dead! "..v.ID)
                     while not (is_battle_turn() or in_battle_room()) do
                         -- check active ally again
-                        if memory.read_u16_le(active_ally_ptr + BLOCK_B.HP) <= 0 then
+                        if get_active_ally_hp() <= 0 then
                         	for _,a in pairs(input_state.AllyParty) do
                                 if a.ID == active_ally_id then
                                     read_unencrypted_pokemon(active_ally_ptr, BLOCK_B, 0, a)
                                 end
                             end
-                        	break
+                        	break -- TODO test if this break is needed or not
                         end
                     	advance_frames({A = "True"}, 1)
                         advance_frames({}, 5)
@@ -682,7 +676,11 @@ end
 -- switch active battle pokemon to given party index, if possible
 local function switch_active(party_idx)
     party_idx = tostring(party_idx)
-    -- TODO account for moves that prevent switching
+    -- is the party index in range?
+    if input_state.AllyParty[party_idx] == nil then
+    	log("Failed to switch: party_idx="..party_idx.." is out of range!")
+    	return false
+    end
     -- is the given party member dead?
     if input_state.AllyParty[party_idx].Stats.HP <= 0 then
         log("Failed to switch: party_idx="..party_idx.." is already dead!")
@@ -825,14 +823,19 @@ end
 
 -- check if evaluation is finished
 local function finished_check()
+    -- did the last battle turn fail?
+    if turn_failure then
+    	log("Battle turn failure occurred: turn="..turn)
+    	return true
+    end
     -- battle lost?
     if ttl <= 0 or ally_deaths >= 3 then
-        log("Battle lost: ttl="..ttl..", ally_deaths="..ally_deaths)
+        log("Battle was lost: ttl="..ttl..", ally_deaths="..ally_deaths)
         return true
     end
     -- battle forfeit?
     if forfeit_check() then
-        log("Battle forfeit.")
+        log("Battle was forfeit.")
         return true
     end
     -- battle won?
@@ -929,19 +932,19 @@ local function battle_room_check()
     end
 end
 
--- make battle move if my turn
+-- performs battle action if it is my turn
 local function battle_turn_check()
     if is_battle_turn() then
         has_battled = 1 -- has battled this round
         -- buffer while battle menu loads
         log("Battle turn #: "..turn)
-        while is_battle_turn() and not (in_battle_menu() or in_party_menu()) do
+        while not (in_battle_menu() or in_party_menu()) do
         	advance_frames({B = "True"}, 1) -- get out of analog mode
             advance_frames({}, 1)
-        end
-        if not is_battle_turn() then
-            log("No longer my battle turn?")
-        	return
+            if not is_battle_turn() then
+                -- log("No longer my battle turn?")
+                return false
+            end
         end
 
         -- evaluate action weights
@@ -954,11 +957,16 @@ local function battle_turn_check()
         while not turn_success do
             log("Attempt_idx="..attempt_idx)
             -- first check if active pokemon is dead
-            local active_hp = memory.read_u16_le(gp + ACTIVE_ALLY_OFFSET + BLOCK_B.HP)
-            if active_hp <= 0 then
-                local team_weights = sort_actions({table.unpack(output, 5, 7)}) -- sort team member weights
-                log("Active pokemon is dead! Attempting switch to party_idx="..team_weights[attempt_idx])
-                turn_success = switch_active(team_weights[attempt_idx])
+            if get_active_ally_hp() <= 0 then
+                local party_idx
+                if PUNISH_ACTION_FAILURES then
+                	party_idx = action_weights[attempt_idx] - 4
+                else
+                    local team_weights = sort_actions({table.unpack(output, 5, 7)}) -- sort team member weights
+                    party_idx = team_weights[attempt_idx]
+                end
+                log("Active pokemon is dead! Attempting switch to party_idx="..party_idx)
+                turn_success = switch_active(party_idx)
             elseif FORCE_MOVES then
                 local move_weights = sort_actions({table.unpack(output, 1, 4)}) -- sort move weights
                 log("Forcing move_idx="..move_weights[attempt_idx])
@@ -977,15 +985,29 @@ local function battle_turn_check()
                     turn_success = switch_active(action_idx - 4)
                 end
             end
+
+            -- end game loop if punishing turn failures
+            if PUNISH_ACTION_FAILURES and not turn_success then
+            	log("Failed to perform turn action! Punishing...")
+            	break
+            end
+
             -- try next best action
             attempt_idx = attempt_idx + 1
             if attempt_idx > 7 then
-                log("Failed to perform any action!")
+                log("Failed to perform any turn action!")
                 break
             end
         end
-        turn = turn + 1
+
+        -- return if turn failure occurred
+        if turn_success then
+        	turn = turn + 1
+        end
+        return not turn_success
     end
+    -- not my turn
+    return false
 end
 
 
@@ -1003,6 +1025,7 @@ function GameLoop()
     round_number = 1
     fitness = 0.0
     turn = 1
+    turn_failure = false
     has_battled = 0  -- reset each round
     input_state = table.shallow_copy(INPUTSTATE_STRUCT)
 
@@ -1030,7 +1053,7 @@ function GameLoop()
         trivial_state_check()
         trade_menu_check()
         battle_room_check()
-        battle_turn_check()
+        turn_failure = battle_turn_check()
         -- advance single frame
         advance_frames({}, 1)
     end
