@@ -45,7 +45,7 @@ class Trainer:
         self.logger.debug(f"Init population size #: {len(self.p.population)}")
 
         # Run for up to 300 generations.
-        self.logger.debug("Starting run...")
+        self.logger.debug("Starting run...\n")
         winner = self.p.run(self._eval, self.t)
 
         # Display the winning genome.

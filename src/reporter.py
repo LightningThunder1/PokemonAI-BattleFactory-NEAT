@@ -51,7 +51,7 @@ class ResultsReporter(BaseReporter):
             self.logger.info("Generation time: {0:.3f} sec\n".format(elapsed))
 
     def post_evaluate(self, config, population, species, best_genome):
-        self.logger.info('****** Generation {0} ******'.format(self.generation))
+        self.logger.info('****** Generation {0} Results ******'.format(self.generation))
         # pylint: disable=no-self-use
         fitnesses = [c.fitness for c in itervalues(population)]
         fit_mean = mean(fitnesses)

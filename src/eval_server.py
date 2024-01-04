@@ -36,14 +36,7 @@ class EvaluationServer:
         self.evaluated_genomes = []  # track evaluated genomes if socket timeout occurs
         self.genome_finished = False  # global var for evaluating genomes
         self.debug_id = -1  # for debugging specific genomes
-
-        logging.basicConfig(
-            filename="./logs/eval_server.log",
-            filemode='a',
-            format='%(asctime)s %(levelname)s %(message)s',
-            datefmt='%H:%M:%S',
-            level=logging.DEBUG
-        )
+        self.logger = None
 
         # set game mode params
         if game_mode == "open_world":
@@ -58,14 +51,16 @@ class EvaluationServer:
         """
         Evaluates a population of genomes.
         """
+        self.logger = self._init_logger(gen_id)  # init the logger for this generation
+        self.logger.info(f"****** Evaluating Generation {gen_id} ******")
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            logging.info("Initializing socket server...")
+            self.logger.debug("Initializing socket server...")
 
             # bind socket server
             self.PORT = 0  # reset port
             s.bind((self.HOST, self.PORT))
             self.PORT = s.getsockname()[1]
-            logging.info(f'Socket server: listening on port {self.PORT }')
+            self.logger.debug(f'Socket server: listening on port {self.PORT }')
             s.listen()
 
             # spawn agent
@@ -74,11 +69,9 @@ class EvaluationServer:
             # wait for agent to connect to socket
             client, addr = s.accept()
             with client:
-                logging.info(f"Connected by {addr}.")
+                self.logger.debug(f"Connected by {addr}.")
                 try:
-                    log = f"Beginning generation evaluation: completed={len(self.evaluated_genomes)}, total={len(genomes)}\n"
-                    logging.info(log)
-                    print(log)
+                    self.logger.info(f"Beginning evaluation: completed={len(self.evaluated_genomes)}, total={len(genomes)}\n")
                     # evaluate each genome
                     for idx, (_id, genome) in enumerate(genomes):
                         # does this match the debug genome?
@@ -90,9 +83,7 @@ class EvaluationServer:
 
                         # create NN from genome
                         net = neat.nn.FeedForwardNetwork.create(genome, config)
-                        log = f"[Gen #: {gen_id}, Index #: {len(self.evaluated_genomes)}/{len(genomes)-1}, Genome #: {_id}]"
-                        logging.info(log)
-                        print(log)
+                        self.logger.info(f"[Gen #: {gen_id}, Index #: {len(self.evaluated_genomes)}/{len(genomes)-1}, Genome #: {_id}]")
 
                         # wait for client to be ready
                         while True:
@@ -100,7 +91,7 @@ class EvaluationServer:
                             if not data:
                                 raise ConnectionClosedException
                             if data == self.READY_STATE:
-                                logging.info("Client is ready to evaluate next genome.")
+                                self.logger.info("Client is ready to evaluate next genome.")
                                 client.sendall(self.READY_STATE)
                                 break
 
@@ -119,20 +110,18 @@ class EvaluationServer:
                     # send finish state to client
                     data = client.recv(1024)
                     client.sendall(self.FINISH_STATE)
-                    logging.info("Finished evaluating genomes.\n")
-                    print("Finished evaluating genomes.\n")
+                    self.logger.info("Finished evaluating genomes.\n")
 
                 except (ConnectionClosedException, KeyboardInterrupt) as e:
                     self.close_server(s)
-                    logging.error("Program interruption! Exiting...\n")
+                    self.logger.error("Program interruption! Exiting...\n")
                     sys.exit(e)
                 except socket.timeout as e:
-                    logging.error("Socket timed out while evaluating genome!\n")
-                    print(f"Socket timed out while evaluating genome! {e}\n")
+                    self.logger.error("Socket timed out while evaluating genome!\n")
                     self.close_server(s)
                     return False
                 except Exception as e:
-                    logging.error(str(e))
+                    self.logger.error(str(e))
                     self.close_server(s)
                     sys.exit(str(e))
 
@@ -145,8 +134,7 @@ class EvaluationServer:
         """
         Evaluates a single genome.
         """
-        logging.info("Evaluating genome...")
-        print("Evaluating genome...")
+        self.logger.info("Evaluating genome...")
         # init fitness
         fitness = 0.0
         self.genome_finished = False
@@ -165,13 +153,13 @@ class EvaluationServer:
 
                 # is msg a fitness score?
                 if msg[:self.FITNESS_HEADER[1]] == self.FITNESS_HEADER[0]:
-                    logging.info("Client is finished evaluating genome.")
+                    self.logger.info("Client is finished evaluating genome.")
                     fitness = float(msg[self.FITNESS_HEADER[1]:])
                     self.genome_finished = True
 
                 # is msg a log?
                 elif msg[:self.LOG_HEADER[1]] == self.LOG_HEADER[0]:
-                    logging.debug(msg[self.LOG_HEADER[1]:])
+                    self.logger.debug(msg[self.LOG_HEADER[1]:])
 
                 # is msg a battle factory input state?
                 elif msg[:self.BF_STATE_HEADER[1]] == self.BF_STATE_HEADER[0]:
@@ -188,8 +176,7 @@ class EvaluationServer:
                     client.sendall(b'' + bytes(f"{len(decision)} {decision}", 'utf-8'))
 
         # return fitness score
-        logging.info(f"Genome fitness: {fitness}\n")
-        print(f"Genome fitness: {fitness}\n")
+        self.logger.info(f"Genome fitness: {fitness}\n")
         return fitness
 
     @classmethod
@@ -207,28 +194,28 @@ class EvaluationServer:
         """
         Forward-feeds game state bytes through genome neural network.
         """
-        logging.info("Evaluating game state...")
+        self.logger.debug("Evaluating game state...")
         # read and sort input state
         bf_state = json.loads(state)
         bf_state = self.sort_dict(bf_state)
-        # logging.info(json.dumps(bf_state, indent=4))
+        # self.logger.debug(json.dumps(bf_state, indent=4))
 
         # flatten input state
         bf_state = self.flatten_dict(bf_state)
-        logging.debug(bf_state)
+        self.logger.debug(bf_state)
         input_layer = np.array(list(bf_state.values()))
 
         # forward feed
         output_layer = net.activate(input_layer)
         output_msg = "{ " + ", ".join([str(round(x, 10)) for x in output_layer]) + " }"
-        logging.debug(output_msg)
+        self.logger.debug(output_msg)
         return output_msg
 
     def _ff_screenshot(self, png: bytes, net: FeedForwardNetwork):
         """
         Forward-feeds screenshot data through genome neural network.
         """
-        logging.info("Evaluating game screenshot...")
+        self.logger.debug("Evaluating game screenshot...")
         # read image and convert to grayscale
         img = PIL.Image.open(io.BytesIO(png)).convert('L')
         # img.show()
@@ -240,7 +227,6 @@ class EvaluationServer:
 
         # reduce image dimensions
         im = block_reduce(im, block_size=(4, 4), func=np.average)
-        # logging.info(im.shape)
         # PIL.Image.fromarray(im).show()
 
         # forward feed
@@ -257,6 +243,33 @@ class EvaluationServer:
         for k, v in sorted(item.items()):
             item[k] = sorted(v) if isinstance(v, list) else v
         return {k: cls.sort_dict(v) if isinstance(v, dict) else v for k, v in sorted(item.items())}
+
+    @classmethod
+    def _init_logger(cls, gen_id: int):
+        """
+        Initializes the EvaluationServer logger.
+        Logs NEAT training results to logs/trainer.log and debug logs to console.
+        """
+        logger = logging.getLogger("eval_server")
+        logger.setLevel(logging.DEBUG)
+        log_format = logging.Formatter('%(asctime)s %(levelname)s %(message)s', datefmt='%H:%M:%S')
+
+        # remove any existing handlers
+        if logger.handlers:
+            logger.handlers.clear()
+
+        # create and add handlers
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(log_format)
+        stream_handler.setLevel(logging.INFO)
+        logger.addHandler(stream_handler)
+
+        info_handler = logging.FileHandler(f"./logs/eval_server-{gen_id}.log")
+        info_handler.setFormatter(log_format)
+        info_handler.setLevel(logging.DEBUG)
+        logger.addHandler(info_handler)
+
+        return logger
 
     @classmethod
     def flatten_dict(cls, d: MutableMapping, parent_key: str = '', sep: str = '.') -> MutableMapping:
@@ -281,7 +294,7 @@ class EvaluationServer:
         Spawns the emulator process and starts the eval_client.lua script.
         :return: Process ID
         """
-        logging.info("Spawning emulator client process...")
+        self.logger.debug("Spawning emulator client process...")
         return subprocess.Popen([
             self.EMU_PATH,
             f'--socket_port={self.PORT}',
