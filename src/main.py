@@ -1,6 +1,8 @@
 import os
 import neat
 from eval_server import EvaluationServer
+import logging
+import reporter
 
 
 class Trainer:
@@ -14,17 +16,18 @@ class Trainer:
         self.restore_ckpt = True  # restore from the last checkpoint?
         self.ckpt_prefix = "./checkpoints/neat-ckpt-"
         self.p = None  # population instance
+        self.logger = self._init_logger()  # trainer logger
 
     def run(self):
         # Create or restore the population, which is the top-level object for a NEAT run.
         if self.restore_ckpt:
             last_ckpt = self.get_last_ckpt()
             if last_ckpt >= 0:
-                print(f"Restoring population from checkpoint {last_ckpt}...")
+                self.logger.debug(f"Restoring population from checkpoint {last_ckpt}...")
                 self.p = neat.Checkpointer.restore_checkpoint(f'{self.ckpt_prefix}{last_ckpt}')
                 self.p.generation += 1
         if not self.p:
-            print("Creating initial population...")
+            self.logger.debug("Creating initial population...")
             self.p = neat.Population(self.config)
 
         # init checkpointer
@@ -34,15 +37,15 @@ class Trainer:
         )
 
         # Add a stdout reporter to show progress in the terminal.
-        self.p.add_reporter(neat.StdOutReporter(True))
+        self.p.add_reporter(reporter.ResultsReporter(self.logger))
         stats = neat.StatisticsReporter()
         self.p.add_reporter(stats)
         self.p.add_reporter(checkpointer)
-        print(f"Init generation #: {self.p.generation}")
-        print(f"Init population size #: {len(self.p.population)}")
+        self.logger.debug(f"Init generation #: {self.p.generation}")
+        self.logger.debug(f"Init population size #: {len(self.p.population)}")
 
         # Run for up to 300 generations.
-        print("Starting run...")
+        self.logger.debug("Starting run...")
         winner = self.p.run(self._eval, self.t)
 
         # Display the winning genome.
@@ -79,6 +82,27 @@ class Trainer:
             if len(split) == 2:
                 highest_idx = max(highest_idx, int(split[1]))
         return highest_idx
+
+    @classmethod
+    def _init_logger(cls):
+        """
+        Initializes the Trainer logger.
+        Logs NEAT training results to logs/trainer.log and debug logs to console.
+        """
+        logger = logging.getLogger("trainer")
+        logger.setLevel(logging.DEBUG)
+        log_format = logging.Formatter('%(message)s')
+
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(log_format)
+        stream_handler.setLevel(logging.DEBUG)
+        logger.addHandler(stream_handler)
+
+        info_handler = logging.FileHandler('./logs/trainer.log')
+        info_handler.setFormatter(log_format)
+        info_handler.setLevel(logging.INFO)
+        logger.addHandler(info_handler)
+        return logger
 
 
 if __name__ == "__main__":
