@@ -27,6 +27,7 @@ local MODE_NA = 0x0000
 local MODE_BATTLE_TURN = 0x1
 local MODE_BATTLE_PMENU = 0x97
 local MODE_MOVE_FAIL = 0xFFFF
+local MODE_SWITCH_FAIL = 0x0000
 local MODE_BATTLE_MENU = 0x12C0
 -- local MODE_BATTLE_MOVES = 0x1E80
 local MODE_BATTLE_PARTY = 0x1AAA
@@ -425,6 +426,10 @@ local function in_move_failure()
     return memory.read_u16_le(gp + MOVE_FAIL_OFFSET) == MODE_MOVE_FAIL
 end
 
+local function in_switch_failure()
+    return memory.read_u16_le(gp + PARTY_SELECTED_OFFSET) == MODE_SWITCH_FAIL
+end
+
 local function in_battle_menu()
     return memory.read_u16_le(gp + BATTLE_MENU_OFFSET) == MODE_BATTLE_MENU
 end
@@ -521,7 +526,6 @@ local function read_inputstate()
                     while not (is_battle_turn() or in_battle_room()) do
                         -- check active ally again
                         if memory.read_u16_le(active_ally_ptr + BLOCK_B.HP) <= 0 then
-                        	print("Active ally is also dead!")
                         	for _,a in pairs(input_state.AllyParty) do
                                 if a.ID == active_ally_id then
                                     read_unencrypted_pokemon(active_ally_ptr, BLOCK_B, 0, a)
@@ -751,6 +755,15 @@ local function switch_active(party_idx)
         })
         advance_frames({["Touch"] = "True"}, 15)
         advance_frames({}, 1)
+        -- are we prevented from switching?
+        if in_switch_failure() then
+        	log("Failed to switch: some status prevented switching!")
+        	while not in_battle_menu() do
+                advance_frames({B = "True"}, 20)
+                advance_frames({}, 1)
+            end
+        	return false
+        end
     end
 
     return true
@@ -761,7 +774,11 @@ local function perform_move(move_idx)
     if in_battle_menu() then
         log("Moving to move selection menu...")
     	while in_battle_menu() do
-    		advance_frames({A = "True"}, 1)
+    		joypad.setanalog({
+                ["Touch X"] = 120,
+                ["Touch Y"] = 80,
+            })
+            advance_frames({["Touch"] = "True"}, 15)
             advance_frames({}, 1)
     	end
     end
