@@ -3,8 +3,6 @@ import logging
 import os
 import signal
 import socket
-import random
-from collections.abc import MutableMapping
 import PIL
 import neat
 import numpy as np
@@ -15,8 +13,7 @@ import subprocess
 from PIL import Image
 import io
 import sys
-
-from src.encoder import Encoder
+from encoder import Encoder
 
 
 class EvaluationServer:
