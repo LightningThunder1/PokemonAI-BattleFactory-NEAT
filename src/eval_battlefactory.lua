@@ -53,6 +53,7 @@ local turn_failure
 local FORCE_MOVES = false  -- forces move actions
 local LOAD_SLOT = 2  -- the emulator save slot to load
 local PUNISH_ACTION_FAILURES = true  -- ends run after an action failure
+local DISABLE_GRAPHICS = true
 
 -- orderings of shuffled pokemon data blocks from shift-values
 local SHUFFLE_ORDER = {
@@ -99,10 +100,10 @@ local POKEMON_STRUCT = {
 	-- 	HP = 0x0, ATK = 0x0, DEF = 0x0,
 	--	SPEED = 0x0, SPA = 0x0, SPD = 0x0,
 	--},
-	EVs = {
-		HP = 0x0, ATK = 0x0, DEF = 0x0,
-		SPEED = 0x0, SPA = 0x0, SPD = 0x0,
-	},
+	-- EVs = {
+	--	HP = 0x0, ATK = 0x0, DEF = 0x0,
+	--	SPEED = 0x0, SPA = 0x0, SPD = 0x0,
+	--},
 	Stats = {
 	    -- Level = 0x0, EXP = 0x0,
 		Status = 0x0, SPD = 0x0,
@@ -269,14 +270,14 @@ local function read_pokemon(ptr, party_idx)
 	--	SPA = 0x0,
 	--	SPD = 0x0,
 	--}
-	pokemon.EVs = {
-		HP = fetch_Dv(a_offset, 0x18 - 0x08) & 0x00FF,
-		ATK = (fetch_Dv(a_offset, 0x18 - 0x08) & 0xFF00) >> 8,
-		DEF = fetch_Dv(a_offset, 0x1A - 0x08) & 0x00FF,
-		SPEED = (fetch_Dv(a_offset, 0x1A - 0x08) & 0xFF00) >> 8,
-		SPA = fetch_Dv(a_offset, 0x1C - 0x08) & 0x00FF,
-		SPD = (fetch_Dv(a_offset, 0x1C - 0x08) & 0xFF00) >> 8,
-	}
+	-- pokemon.EVs = {
+	--	HP = fetch_Dv(a_offset, 0x18 - 0x08) & 0x00FF,
+	--	ATK = (fetch_Dv(a_offset, 0x18 - 0x08) & 0xFF00) >> 8,
+	--	DEF = fetch_Dv(a_offset, 0x1A - 0x08) & 0x00FF,
+	--	SPEED = (fetch_Dv(a_offset, 0x1A - 0x08) & 0xFF00) >> 8,
+	--	SPA = fetch_Dv(a_offset, 0x1C - 0x08) & 0x00FF,
+	--	SPD = (fetch_Dv(a_offset, 0x1C - 0x08) & 0xFF00) >> 8,
+	-- }
 	pokemon.Stats = {
 		Status = fetch_Bv(0x88) & 0x00FF, -- TODO test
 		Confused = 0x0,
@@ -334,6 +335,9 @@ local function read_unencrypted_pokemon(ptr, offsets, party_idx, pk)
 end
 
 local function refresh_gui()
+    if DISABLE_GRAPHICS then
+    	return
+    end
     gui.cleartext()
 	gui.drawText(150, 0, "Ally Deaths: "..ally_deaths, "#ED4C40", "#000000", 10)
 	gui.drawText(150, 10, "Enemy Deaths: "..enemy_deaths, "#ED4C40", "#000000", 10)

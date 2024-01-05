@@ -16,6 +16,8 @@ from PIL import Image
 import io
 import sys
 
+from src.encoder import Encoder
+
 
 class EvaluationServer:
     # consts
@@ -198,16 +200,14 @@ class EvaluationServer:
         # read and sort input state
         bf_state = json.loads(state)
         bf_state = self.sort_dict(bf_state)
-        # self.logger.debug(json.dumps(bf_state, indent=4))
-
-        # flatten input state
-        bf_state = self.flatten_dict(bf_state)
         self.logger.debug(bf_state)
-        input_layer = np.array(list(bf_state.values()))
+
+        # vectorize input state
+        input_layer = Encoder.vectorize_state(bf_state)
 
         # forward feed
         output_layer = net.activate(input_layer)
-        output_msg = "{ " + ", ".join([str(round(x, 10)) for x in output_layer]) + " }"
+        output_msg = "{ " + ", ".join(["{:.15f}".format(x) for x in output_layer]) + " }"
         self.logger.debug(output_msg)
         return output_msg
 
@@ -271,17 +271,6 @@ class EvaluationServer:
 
         return logger
 
-    @classmethod
-    def flatten_dict(cls, d: MutableMapping, parent_key: str = '', sep: str = '.') -> MutableMapping:
-        items = []
-        for k, v in d.items():
-            new_key = parent_key + sep + k if parent_key else k
-            if isinstance(v, MutableMapping):
-                items.extend(cls.flatten_dict(v, new_key, sep=sep).items())
-            else:
-                items.append((new_key, v))
-        return dict(items)
-
     @staticmethod
     def calculate_mindex(data):
         """
@@ -297,6 +286,7 @@ class EvaluationServer:
         self.logger.debug("Spawning emulator client process...")
         return subprocess.Popen([
             self.EMU_PATH,
+            f'--chromeless',
             f'--socket_port={self.PORT}',
             f'--socket_ip={self.HOST}',
             f'--lua={os.path.abspath(self.EVAL_SCRIPT)}'
