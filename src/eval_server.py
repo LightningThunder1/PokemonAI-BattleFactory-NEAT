@@ -22,8 +22,9 @@ class EvaluationServer:
     # consts
     HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
     PORT = 0  # Port to listen on (non-privileged ports are > 1023)
-    EMU_PATH = '/home/javen/Desktop/PokeDS/BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
-    N_CLIENTS = 1  # number of clients to concurrently evaluate genomes
+    EMU_PATH = '../BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
+    N_CLIENTS = 5  # number of concurrent clients to evaluate genomes
+    DEBUG_ID = -1  # for debugging specific genomes
 
     KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
     PNG_HEADER = (b"\x89PNG", 7)
@@ -34,13 +35,18 @@ class EvaluationServer:
     LOG_HEADER = (b"LOG:", 4)
 
     def __init__(self, game_mode: str):
-        self.client_pids = []  # emulator client process ID(s)
-        socket.setdefaulttimeout(300)  # default socket timeout
+        # default socket timeout
+        socket.setdefaulttimeout(300)
+
+        # gen evaluation vars
         self.evaluated_genomes = []  # track evaluated genomes if socket timeout occurs
-        self.debug_id = -1  # for debugging specific genomes
-        self.eval_idx = None
-        self.mutex = None
-        self.logger = None
+        self.client_pids = None  # emulator client process ID(s)
+        self.eval_idx = None  # thread-safe evaluation index
+        self.genomes = None  # list of genomes to evaluate
+        self.config = None  # config obj for creating networks
+        self.mutex = None  # for thread-safe eval_idx access
+        self.logger = None  # evaluation server logger
+        self.gen_id = None  # generation ID
 
         # set game mode params
         if game_mode == "open_world":
@@ -54,92 +60,108 @@ class EvaluationServer:
         """
         Evaluates a population of genomes.
         """
+        # set generation vars
         self.logger = self._init_logger(gen_id)  # init the logger for this generation
         self.mutex = threading.Lock()
+        self.client_pids = []
         self.eval_idx = 0
+        self.config = config
+        self.genomes = genomes
+        self.gen_id = gen_id
+
+        # initial gen logs
         self.logger.info(f"****** Evaluating Generation {gen_id} ******")
-        self.logger.info(f"completed={len(self.evaluated_genomes)}, total={len(genomes)}\n")
+        self.logger.info(f"completed={len(self.evaluated_genomes)}, total={len(genomes)}")
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            self.logger.debug("Initializing socket server...")
+        # init socket server
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.logger.debug("Initializing socket server...")
 
-            # bind socket server
-            self.PORT = 0  # reset port
-            s.bind((self.HOST, self.PORT))
-            self.PORT = s.getsockname()[1]
+        # bind socket server
+        self.PORT = 0  # reset port
+        server.bind((self.HOST, self.PORT))
+        self.PORT = server.getsockname()[1]
 
-            # listen for incoming connections
-            self.logger.debug(f'Socket server: listening on port {self.PORT }')
-            s.listen()
+        # listen for incoming connections
+        self.logger.debug(f'Socket server: listening on port {self.PORT }')
+        server.listen()
 
-            # spawn client agent(s)
-            for i in range(self.N_CLIENTS):
-                self.client_pids.append(self.spawn_client().pid)
+        # handle client thread exceptions
+        def handle_exceptions(args):
+            self.logger.error(args.exc_value)
+            self.close_server(server)
+            sys.exit(args.exc_type)
+        threading.excepthook = handle_exceptions
 
-            # wait for agent to connect to socket
-            client, addr = s.accept()
-            with client:
-                self.logger.debug(f"Connected by {addr}.")
-                try:
-                    # evaluate next genome
-                    _id, genome = self._get_next(genomes)
-                    if not genome:
-                        return True
+        # spawn client processes and evaluate genomes
+        client_threads = []
+        for _ in range(self.N_CLIENTS):
+            # create client process and record pid
+            self.spawn_client()
 
-                    # create NN from genome
-                    net = neat.nn.FeedForwardNetwork.create(genome, config)
-                    self.logger.info(f"[Gen #: {gen_id}, Index #: {len(self.evaluated_genomes)}/{len(genomes)-1}, Genome #: {_id}]")
+            # wait for agent process to connect to socket
+            client, addr = server.accept()
+            self.logger.debug(f"Connected by {addr}.")
 
-                    # wait for client to be ready
-                    while True:
-                        data = client.recv(1024)
-                        if not data:
-                            raise ConnectionClosedException
-                        if data == self.READY_STATE:
-                            self.logger.info("Client is ready to evaluate next genome.")
-                            client.sendall(self.READY_STATE)
-                            break
+            # start a new thread to handle the client process
+            t = threading.Thread(target=self._handle_client, args=(client,))
+            client_threads.append(t)
+            t.start()
 
-                    # begin genome evaluation
-                    fitness = self._eval(client, net)
+        # wait for all client processes to finish
+        for t in client_threads:
+            t.join()
 
-                    # successful evaluation
-                    genome.fitness = fitness
-                    self.evaluated_genomes.append(_id)
+        # exit program if debugging
+        if self.DEBUG_ID >= 0:
+            self.close_server(server)
+            sys.exit("Finished debugging genome.")
 
-                    # exit program if debugging
-                    if self.debug_id >= 0:
-                        self.close_server(s)
-                        sys.exit("Finished debugging genome.")
+        # successful generation evaluation
+        self.close_server(server)
+        self.evaluated_genomes = []  # reset evaluated genomes
+        return True
 
-                    # send finish state to client
-                    data = client.recv(1024)
-                    client.sendall(self.FINISH_STATE)
-                    self.logger.info("Finished evaluating genomes.\n")
+    def _handle_client(self, client) -> None:
+        """
+        Handles the client process in asynchronously evaluating genomes.
+        """
+        while True:
+            # evaluate next genome
+            idx, _id, genome = self._get_next(self.genomes)
+            if not genome:
+                self.logger.debug("No genomes are left for client to evaluate...")
+                break
 
-                except (ConnectionClosedException, KeyboardInterrupt) as e:
-                    self.close_server(s)
-                    self.logger.error("Program interruption! Exiting...\n")
-                    sys.exit(e)
-                except socket.timeout as e:
-                    self.logger.error("Socket timed out while evaluating genome!\n")
-                    self.close_server(s)
-                    return False
-                except Exception as e:
-                    self.logger.error(str(e))
-                    self.close_server(s)
-                    sys.exit(str(e))
+            # create NN from genome
+            net = neat.nn.FeedForwardNetwork.create(genome, self.config)
+            self.logger.info(
+                f"[Gen #: {self.gen_id}, Index #: {idx}/{len(self.genomes) - 1}, Genome #: {_id}]")
 
-            # successful generation evaluation
-            self.close_server(s)
-            self.evaluated_genomes = []  # reset evaluated genomes
-            return True
+            # wait for client to be ready
+            while True:
+                data = client.recv(1024)
+                if not data:
+                    raise ConnectionClosedException
+                if data == self.READY_STATE:
+                    self.logger.debug("Client is ready to evaluate next genome.")
+                    client.sendall(self.READY_STATE)
+                    break
+
+            # begin genome evaluation
+            genome.fitness = self._eval(client, net)
+            self.evaluated_genomes.append(_id)  # successful evaluation
+            self.logger.info(f"Genome #{_id} fitness: {genome.fitness}")
+
+        # send finish state to client
+        # data = client.recv(1024)
+        client.sendall(self.FINISH_STATE)
 
     def _eval(self, client, net: FeedForwardNetwork) -> float:
         """
         Evaluates a single genome.
         """
-        self.logger.info("Evaluating genome...")
+        self.logger.debug("Evaluating genome...")
         # init fitness
         fitness = 0.0
         genome_finished = False
@@ -158,7 +180,7 @@ class EvaluationServer:
 
                 # is msg a fitness score?
                 if msg[:self.FITNESS_HEADER[1]] == self.FITNESS_HEADER[0]:
-                    self.logger.info("Client is finished evaluating genome.")
+                    self.logger.debug("Client is finished evaluating genome.")
                     fitness = float(msg[self.FITNESS_HEADER[1]:])
                     genome_finished = True
 
@@ -181,27 +203,26 @@ class EvaluationServer:
                     client.sendall(b'' + bytes(f"{len(decision)} {decision}", 'utf-8'))
 
         # return fitness score
-        self.logger.info(f"Genome fitness: {fitness}\n")
         return fitness
 
     def _get_next(self, genomes):
         """
         Retrieves the next genome to evaluate in a thread-safe way.
-        :returns genome_id, genome or None if no genomes are available.
+        :returns (genome index, genome ID, genome), or None if no available genomes are remaining.
         """
-        _id, genome = None, None
+        idx, _id, genome = None, None, None
         self.mutex.acquire()
         while genome is None and self.eval_idx < len(genomes):
             t_id, t_genome = genomes[self.eval_idx]
             # find next available genome
-            if t_genome not in self.evaluated_genomes and 0 <= self.debug_id == t_id:
-                _id, genome = t_id, t_genome
+            if t_genome not in self.evaluated_genomes and not (0 <= self.DEBUG_ID != t_id):
+                idx, _id, genome = self.eval_idx, t_id, t_genome
                 # if debug genome was found, prevent other evaluations
-                if 0 <= self.debug_id == t_id:
+                if 0 <= self.DEBUG_ID == t_id:
                     self.eval_idx = len(genomes)
             self.eval_idx += 1
         self.mutex.release()
-        return _id, genome
+        return idx, _id, genome
 
     @classmethod
     def _parse_msgs(cls, _msg) -> [bytes]:
@@ -277,7 +298,7 @@ class EvaluationServer:
         log_format = logging.Formatter('%(asctime)s %(levelname)s %(message)s', datefmt='%H:%M:%S')
 
         # remove any existing handlers
-        if logger.handlers:
+        if logger.hasHandlers():
             logger.handlers.clear()
 
         # create and add handlers
@@ -306,13 +327,17 @@ class EvaluationServer:
         :return: Process ID
         """
         self.logger.debug("Spawning emulator client process...")
-        return subprocess.Popen([
-            self.EMU_PATH,
-            f'--chromeless',
-            f'--socket_port={self.PORT}',
-            f'--socket_ip={self.HOST}',
-            f'--lua={os.path.abspath(self.EVAL_SCRIPT)}'
-        ], preexec_fn=os.setsid)
+        pid = subprocess.Popen([
+                self.EMU_PATH,
+                # f'--chromeless',
+                f'--socket_port={self.PORT}',
+                f'--socket_ip={self.HOST}',
+                f'--lua={os.path.abspath(self.EVAL_SCRIPT)}'
+            ],
+            preexec_fn=os.setsid,
+        ).pid
+        self.client_pids.append(pid)
+        return pid
 
     def kill_client(self, pid):
         """
@@ -326,10 +351,14 @@ class EvaluationServer:
         """
         Forcibly closes the socket server and client process.
         """
-        for pid in self.client_pids:
-            self.kill_client(pid)
-        s.shutdown(socket.SHUT_RDWR)
-        s.close()
+        self.logger.debug("Closing server...")
+        try:
+            for pid in self.client_pids:
+                self.kill_client(pid)
+            s.shutdown(socket.SHUT_RDWR)
+            s.close()
+        except Exception:
+            self.logger.error("close_server() failed.")
 
 
 class ConnectionClosedException(Exception):
