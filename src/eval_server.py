@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 import signal
 import socket
@@ -14,6 +15,7 @@ from PIL import Image
 import io
 import sys
 from encoder import Encoder
+import threading
 
 
 class EvaluationServer:
@@ -36,6 +38,8 @@ class EvaluationServer:
         socket.setdefaulttimeout(300)  # default socket timeout
         self.evaluated_genomes = []  # track evaluated genomes if socket timeout occurs
         self.debug_id = -1  # for debugging specific genomes
+        self.eval_idx = None
+        self.mutex = None
         self.logger = None
 
         # set game mode params
@@ -44,7 +48,6 @@ class EvaluationServer:
             self.ACTIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
         if game_mode == "battle_factory":
             self.EVAL_SCRIPT = "./src/eval_battlefactory.lua"
-            # self.ACTIONS = ['B', 'A', 'Up', 'Down', 'Left', 'Right']
             self.ACTIONS = ['Move1', 'Move2', 'Move3', 'Move4', 'Poke1', 'Poke2', 'Poke3', 'Poke4', 'Poke5', 'Poke6']
 
     def eval_genomes(self, genomes, config, gen_id) -> bool:
@@ -52,7 +55,11 @@ class EvaluationServer:
         Evaluates a population of genomes.
         """
         self.logger = self._init_logger(gen_id)  # init the logger for this generation
+        self.mutex = threading.Lock()
+        self.eval_idx = 0
         self.logger.info(f"****** Evaluating Generation {gen_id} ******")
+        self.logger.info(f"completed={len(self.evaluated_genomes)}, total={len(genomes)}\n")
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             self.logger.debug("Initializing socket server...")
 
@@ -60,6 +67,8 @@ class EvaluationServer:
             self.PORT = 0  # reset port
             s.bind((self.HOST, self.PORT))
             self.PORT = s.getsockname()[1]
+
+            # listen for incoming connections
             self.logger.debug(f'Socket server: listening on port {self.PORT }')
             s.listen()
 
@@ -72,41 +81,36 @@ class EvaluationServer:
             with client:
                 self.logger.debug(f"Connected by {addr}.")
                 try:
-                    self.logger.info(f"Beginning evaluation: completed={len(self.evaluated_genomes)}, total={len(genomes)}\n")
-                    # evaluate each genome
-                    for idx, (_id, genome) in enumerate(genomes):
-                        # does this match the debug genome?
-                        if 0 <= self.debug_id != _id:
-                            continue
-                        # check if genome was already evaluated
-                        if _id in self.evaluated_genomes:
-                            continue
+                    # evaluate next genome
+                    _id, genome = self._get_next(genomes)
+                    if not genome:
+                        return True
 
-                        # create NN from genome
-                        net = neat.nn.FeedForwardNetwork.create(genome, config)
-                        self.logger.info(f"[Gen #: {gen_id}, Index #: {len(self.evaluated_genomes)}/{len(genomes)-1}, Genome #: {_id}]")
+                    # create NN from genome
+                    net = neat.nn.FeedForwardNetwork.create(genome, config)
+                    self.logger.info(f"[Gen #: {gen_id}, Index #: {len(self.evaluated_genomes)}/{len(genomes)-1}, Genome #: {_id}]")
 
-                        # wait for client to be ready
-                        while True:
-                            data = client.recv(1024)
-                            if not data:
-                                raise ConnectionClosedException
-                            if data == self.READY_STATE:
-                                self.logger.info("Client is ready to evaluate next genome.")
-                                client.sendall(self.READY_STATE)
-                                break
+                    # wait for client to be ready
+                    while True:
+                        data = client.recv(1024)
+                        if not data:
+                            raise ConnectionClosedException
+                        if data == self.READY_STATE:
+                            self.logger.info("Client is ready to evaluate next genome.")
+                            client.sendall(self.READY_STATE)
+                            break
 
-                        # begin genome evaluation
-                        fitness = self._eval(client, net)
+                    # begin genome evaluation
+                    fitness = self._eval(client, net)
 
-                        # successful evaluation
-                        genome.fitness = fitness
-                        self.evaluated_genomes.append(_id)
+                    # successful evaluation
+                    genome.fitness = fitness
+                    self.evaluated_genomes.append(_id)
 
-                        # exit program if debugging
-                        if self.debug_id >= 0:
-                            self.close_server(s)
-                            sys.exit("Finished debugging genome.")
+                    # exit program if debugging
+                    if self.debug_id >= 0:
+                        self.close_server(s)
+                        sys.exit("Finished debugging genome.")
 
                     # send finish state to client
                     data = client.recv(1024)
@@ -179,6 +183,25 @@ class EvaluationServer:
         # return fitness score
         self.logger.info(f"Genome fitness: {fitness}\n")
         return fitness
+
+    def _get_next(self, genomes):
+        """
+        Retrieves the next genome to evaluate in a thread-safe way.
+        :returns genome_id, genome or None if no genomes are available.
+        """
+        _id, genome = None, None
+        self.mutex.acquire()
+        while genome is None and self.eval_idx < len(genomes):
+            t_id, t_genome = genomes[self.eval_idx]
+            # find next available genome
+            if t_genome not in self.evaluated_genomes and 0 <= self.debug_id == t_id:
+                _id, genome = t_id, t_genome
+                # if debug genome was found, prevent other evaluations
+                if 0 <= self.debug_id == t_id:
+                    self.eval_idx = len(genomes)
+            self.eval_idx += 1
+        self.mutex.release()
+        return _id, genome
 
     @classmethod
     def _parse_msgs(cls, _msg) -> [bytes]:
