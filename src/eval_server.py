@@ -21,6 +21,8 @@ class EvaluationServer:
     HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
     PORT = 0  # Port to listen on (non-privileged ports are > 1023)
     EMU_PATH = '/home/javen/Desktop/PokeDS/BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
+    N_CLIENTS = 1  # number of clients to concurrently evaluate genomes
+
     KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
     PNG_HEADER = (b"\x89PNG", 7)
     BF_STATE_HEADER = (b"BF_STATE", 8)
@@ -30,10 +32,9 @@ class EvaluationServer:
     LOG_HEADER = (b"LOG:", 4)
 
     def __init__(self, game_mode: str):
-        self.client_pid = None  # emulator client process ID
+        self.client_pids = []  # emulator client process ID(s)
         socket.setdefaulttimeout(300)  # default socket timeout
         self.evaluated_genomes = []  # track evaluated genomes if socket timeout occurs
-        self.genome_finished = False  # global var for evaluating genomes
         self.debug_id = -1  # for debugging specific genomes
         self.logger = None
 
@@ -62,8 +63,9 @@ class EvaluationServer:
             self.logger.debug(f'Socket server: listening on port {self.PORT }')
             s.listen()
 
-            # spawn agent
-            self.client_pid = self.spawn_client().pid
+            # spawn client agent(s)
+            for i in range(self.N_CLIENTS):
+                self.client_pids.append(self.spawn_client().pid)
 
             # wait for agent to connect to socket
             client, addr = s.accept()
@@ -136,10 +138,10 @@ class EvaluationServer:
         self.logger.info("Evaluating genome...")
         # init fitness
         fitness = 0.0
-        self.genome_finished = False
+        genome_finished = False
 
         # repeat game loop
-        while not self.genome_finished:
+        while not genome_finished:
             # receive client buffered message
             data = client.recv(8192)
 
@@ -154,7 +156,7 @@ class EvaluationServer:
                 if msg[:self.FITNESS_HEADER[1]] == self.FITNESS_HEADER[0]:
                     self.logger.info("Client is finished evaluating genome.")
                     fitness = float(msg[self.FITNESS_HEADER[1]:])
-                    self.genome_finished = True
+                    genome_finished = True
 
                 # is msg a log?
                 elif msg[:self.LOG_HEADER[1]] == self.LOG_HEADER[0]:
@@ -301,7 +303,8 @@ class EvaluationServer:
         """
         Forcibly closes the socket server and client process.
         """
-        self.kill_client(self.client_pid)
+        for pid in self.client_pids:
+            self.kill_client(pid)
         s.shutdown(socket.SHUT_RDWR)
         s.close()
 
