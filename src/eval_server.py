@@ -329,7 +329,7 @@ class EvaluationServer:
         self.logger.debug("Spawning emulator client process...")
         pid = subprocess.Popen([
                 self.EMU_PATH,
-                # f'--chromeless',
+                f'--chromeless',
                 f'--socket_port={self.PORT}',
                 f'--socket_ip={self.HOST}',
                 f'--lua={os.path.abspath(self.EVAL_SCRIPT)}'
