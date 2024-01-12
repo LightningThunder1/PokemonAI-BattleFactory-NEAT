@@ -23,7 +23,7 @@ class EvaluationServer:
     HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
     PORT = 0  # Port to listen on (non-privileged ports are > 1023)
     EMU_PATH = '../BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
-    N_CLIENTS = 5  # number of concurrent clients to evaluate genomes
+    N_CLIENTS = 10  # number of concurrent clients to evaluate genomes
     DEBUG_ID = -1  # for debugging specific genomes
 
     KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
