@@ -47,6 +47,7 @@ class EvaluationServer:
         self.mutex = None  # for thread-safe eval_idx access
         self.logger = None  # evaluation server logger
         self.gen_id = None  # generation ID
+        self.eval_failure = False
 
         # set game mode params
         if game_mode == "open_world":
@@ -74,7 +75,7 @@ class EvaluationServer:
         self.logger.info(f"completed={len(self.evaluated_genomes)}, total={len(genomes)}")
 
         # init socket server
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # TODO move to init()
         self.logger.debug("Initializing socket server...")
 
         # bind socket server
@@ -89,8 +90,8 @@ class EvaluationServer:
         # handle client thread exceptions
         def handle_exceptions(args):
             self.logger.error(args.exc_value)
-            self.close_server(server)
-            sys.exit(args.exc_type)
+            self.eval_failure = True
+            self.close_server(server)  # TODO impl kill_clients()
         threading.excepthook = handle_exceptions
 
         # spawn client processes and evaluate genomes
@@ -109,13 +110,24 @@ class EvaluationServer:
             t.start()
 
         # wait for all client processes to finish
-        for t in client_threads:
-            t.join()
+        try:
+            for t in client_threads:
+                t.join()
+        except KeyboardInterrupt:  # TODO move outside of eval_server
+            self.logger.error("KeyboardInterrupt")
+            self.close_server(server)
+            sys.exit()
+
+        # exit program if an evaluation failure occurred
+        if self.eval_failure:
+            self.logger.error("An evaluation exception occurred!")
+            sys.exit()
 
         # exit program if debugging
         if self.DEBUG_ID >= 0:
+            logging.info("Finished debugging genome.")
             self.close_server(server)
-            sys.exit("Finished debugging genome.")
+            sys.exit()
 
         # successful generation evaluation
         self.close_server(server)
@@ -358,7 +370,8 @@ class EvaluationServer:
             s.shutdown(socket.SHUT_RDWR)
             s.close()
         except Exception:
-            self.logger.error("close_server() failed.")
+            # self.logger.error("close_server() failed.")
+            return
 
 
 class ConnectionClosedException(Exception):
