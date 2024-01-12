@@ -259,10 +259,11 @@ class EvaluationServer:
 
         # vectorize input state
         input_layer = Encoder.vectorize_state(bf_state)
+        # self.logger.debug(input_layer)
 
         # forward feed
         output_layer = net.activate(input_layer)
-        output_msg = "{ " + ", ".join(["{:.15f}".format(x) for x in output_layer]) + " }"
+        output_msg = "{ " + ", ".join(["{:.32f}".format(x) for x in output_layer]) + " }"
         self.logger.debug(output_msg)
         return output_msg
 
