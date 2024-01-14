@@ -51,9 +51,10 @@ local turn_failure
 
 -- game loop options
 local FORCE_MOVES = false  -- forces move actions
-local LOAD_SLOT = 2  -- the emulator save slot to load
+local LOAD_SLOT = 3  -- the emulator save slot to load
 local PUNISH_ACTION_FAILURES = true  -- ends run after an action failure
 local DISABLE_GRAPHICS = true
+local ADD_RNG = true
 
 -- orderings of shuffled pokemon data blocks from shift-values
 local SHUFFLE_ORDER = {
@@ -875,6 +876,15 @@ local function finished_check()
     return false
 end
 
+local function randomize_seed()
+    if ADD_RNG and is_outside() then
+    	math.randomseed(os.time())
+    	local rng = math.random(1, 250)
+    	log("Randomizing seed: waiting "..rng.." frames.")
+        advance_frames({}, rng)
+    end
+end
+
 -- manually move out of trivial states
 local function trivial_state_check()
     if is_outside() or is_trading() then
@@ -1062,6 +1072,7 @@ function GameLoop()
             break
         end
         -- state advancement
+        randomize_seed()
         trivial_state_check()
         trade_menu_check()
         battle_room_check()
