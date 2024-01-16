@@ -30,6 +30,7 @@ class EvaluationServer:
     PNG_HEADER = (b"\x89PNG", 7)
     BF_STATE_HEADER = (b"BF_STATE", 8)
     READY_STATE = b"5 READY"
+    SEED_STATE = (b"SEED", 4)
     FINISH_STATE = b"8 FINISHED"
     FITNESS_HEADER = (b"FITNESS:", 8)
     LOG_HEADER = (b"LOG:", 4)
@@ -206,6 +207,11 @@ class EvaluationServer:
                         msg[self.BF_STATE_HEADER[1]:], net
                     )
                     # respond with output message
+                    client.sendall(b'' + bytes(f"{len(output_msg)} {output_msg}", 'utf-8'))
+
+                # is msg a seed request?
+                elif msg[:self.SEED_STATE[1]] == self.SEED_STATE[0]:
+                    output_msg = str(self.gen_id % 255)  # seed the evaluation
                     client.sendall(b'' + bytes(f"{len(output_msg)} {output_msg}", 'utf-8'))
 
                 # is msg a state screenshot?

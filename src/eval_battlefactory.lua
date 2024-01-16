@@ -878,9 +878,11 @@ end
 
 local function randomize_seed()
     if ADD_RNG and is_outside() then
-    	math.randomseed(os.time())
-    	local rng = math.random(1, 250)
-    	log("Randomizing seed: waiting "..rng.." frames.")
+    	-- math.randomseed(os.time())
+    	-- local rng = math.random(1, 250)
+    	comm.socketServerSend("SEED")
+        local rng = comm.socketServerResponse()
+    	log("Randomizing seed: waiting "..rng.." frames...")
         advance_frames({}, rng)
     end
 end
