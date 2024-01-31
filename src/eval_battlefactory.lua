@@ -51,10 +51,10 @@ local turn_failure
 
 -- game loop options
 local FORCE_MOVES = false  -- forces move actions
-local LOAD_SLOT = 3  -- the emulator save slot to load
+local LOAD_SLOT = 2  -- the emulator save slot to load
 local PUNISH_ACTION_FAILURES = true  -- ends run after an action failure
 local DISABLE_GRAPHICS = true
-local ADD_RNG = true
+local ADD_RNG = false
 
 -- orderings of shuffled pokemon data blocks from shift-values
 local SHUFFLE_ORDER = {

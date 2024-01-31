@@ -211,7 +211,7 @@ class EvaluationServer:
 
                 # is msg a seed request?
                 elif msg[:self.SEED_STATE[1]] == self.SEED_STATE[0]:
-                    output_msg = str(self.gen_id % 255)  # seed the evaluation
+                    output_msg = str(self.gen_id % 5)  # seed the evaluation
                     client.sendall(b'' + bytes(f"{len(output_msg)} {output_msg}", 'utf-8'))
 
                 # is msg a state screenshot?
