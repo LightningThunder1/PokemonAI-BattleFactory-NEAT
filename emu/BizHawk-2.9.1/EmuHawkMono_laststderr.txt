@@ -1,1 +1,1 @@
-Gtk-Message: 17:50:28.103: Failed to load module "canberra-gtk-module"
+bash: mono: command not found
