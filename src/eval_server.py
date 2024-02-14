@@ -1,6 +1,6 @@
 import json
 import logging
-import math
+import platform
 import os
 import signal
 import socket
@@ -22,10 +22,9 @@ class EvaluationServer:
     # consts
     HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
     PORT = 0  # Port to listen on (non-privileged ports are > 1023)
-    EMU_PATH = '../BizHawk-2.9.1-linux-x64/EmuHawkMono.sh'
+    EMU_PATH = './emu/BizHawk-2.9.1/'
     N_CLIENTS = 10  # number of concurrent clients to evaluate genomes
     DEBUG_ID = -1  # for debugging specific genomes
-
     KERNEL = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # Edge Detection Kernel
     PNG_HEADER = (b"\x89PNG", 7)
     BF_STATE_HEADER = (b"BF_STATE", 8)
@@ -50,13 +49,19 @@ class EvaluationServer:
         self.gen_id = None  # generation ID
         self.eval_failure = False
 
-        # set game mode params
+        # evaluation mode parameters
         if game_mode == "open_world":
             self.EVAL_SCRIPT = "./src/eval_openworld.lua"
             self.ACTIONS = ['B', 'A', 'Y', 'X', 'Up', 'Down', 'Left', 'Right', 'Null']
         if game_mode == "battle_factory":
             self.EVAL_SCRIPT = "./src/eval_battlefactory.lua"
             self.ACTIONS = ['Move1', 'Move2', 'Move3', 'Move4', 'Poke1', 'Poke2', 'Poke3', 'Poke4', 'Poke5', 'Poke6']
+
+        # emulator path
+        if platform.system() == 'Windows':
+            self.EMU_PATH = os.path.join(self.EMU_PATH, 'EmuHawk.exe')
+        else:
+            self.EMU_PATH = os.path.join(self.EMU_PATH, 'EmuHawkMono.sh')
 
     def eval_genomes(self, genomes, config, gen_id) -> bool:
         """
@@ -346,6 +351,7 @@ class EvaluationServer:
         :return: Process ID
         """
         self.logger.debug("Spawning emulator client process...")
+        pre_fn = os.setsid if platform.system() != 'Windows' else None
         pid = subprocess.Popen([
                 self.EMU_PATH,
                 f'--chromeless',
@@ -353,7 +359,7 @@ class EvaluationServer:
                 f'--socket_ip={self.HOST}',
                 f'--lua={os.path.abspath(self.EVAL_SCRIPT)}'
             ],
-            preexec_fn=os.setsid,
+            preexec_fn=pre_fn,
         ).pid
         self.client_pids.append(pid)
         return pid
