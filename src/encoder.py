@@ -9,16 +9,22 @@ class Encoder:
     """
     Used to prepare game state data for network forward-feeding.
     """
-    ERR_DIGITS = 5
+    # rounding error
+    ERR_DIGITS = 16
+
     # numerical features
     STAT_MAX = 255
     BOOST_MAX = 12
+    HP_MAX = 315
+    PP_MAX = 40
+
     # categorical features (number of values, number of bits needed)
     ABILITIES = (123, 7)
     MOVES = (467, 9)
     POKEMON = (493, 9)
     ITEMS = (327, 9)
     GAME_STATE = (3, 2)
+
     # regex patterns
     ABILITY_PTN = re.compile(r'\w*Party\.\d\.Ability')
     ACTIVE_PTN = re.compile(r'\w*Party\.\d\.Active')
@@ -30,7 +36,7 @@ class Encoder:
     BOOST_PTN = re.compile(r'\w*Party\.\d\.Stats\.\w*_Boost')
     STATUS_PTN = re.compile(r'\w*Party\.\d\.Stats\.Status')
     CONFUSED_PTN = re.compile(r'\w*Party\.\d\.Stats\.Confused')
-    HP_PTN = re.compile(r'\w*Party\.\d\.Stats\.MaxHP')
+    HP_PTN = re.compile(r'\w*Party\.\d\.Stats\.HP')
     STATE_PTN = "State"
 
     @classmethod
@@ -41,16 +47,16 @@ class Encoder:
         state = cls.flatten_dict(state)
         encoded = []
         for k, v in state.items():
-            if cls.ABILITY_PTN.match(k):
-                encoded += cls.encode_binary(v, cls.ABILITIES[1])
-            elif cls.ACTIVE_PTN.match(k):
+            if cls.ACTIVE_PTN.match(k):
                 encoded += [v]
-            elif cls.ITEM_PTN.match(k):
-                encoded += cls.encode_binary(v, cls.ITEMS[1])
+            # elif cls.ITEM_PTN.match(k):
+            #     encoded += cls.encode_binary(v, cls.ITEMS[1])
+            # elif cls.ABILITY_PTN.match(k):
+            #     encoded += cls.encode_binary(v, cls.ABILITIES[1])
             elif cls.ID_PTN.match(k):
                 encoded += cls.encode_binary(v, cls.POKEMON[1])
-            elif cls.MOVE_ID_PTN.match(k):
-                encoded += cls.encode_binary(v, cls.MOVES[1])
+            # elif cls.MOVE_ID_PTN.match(k):
+            #     encoded += cls.encode_binary(v, cls.MOVES[1])
             elif cls.MOVE_PP_PTN.match(k):
                 encoded += [1 if v > 0 else 0]
             elif cls.BOOST_PTN.match(k):
@@ -60,16 +66,9 @@ class Encoder:
             elif cls.STATUS_PTN.match(k) or cls.CONFUSED_PTN.match(k):
                 encoded += cls.encode_binary(v, 8)  # 1-byte
             elif cls.HP_PTN.match(k):
-                if v > 0:
-                    encoded += [round(state[k.replace("Max", "")] / v, cls.ERR_DIGITS)]
-                else:
-                    encoded += [0]
+                encoded += [round(v / cls.HP_MAX, cls.ERR_DIGITS)]
             elif cls.STATE_PTN == k:
                 encoded += cls.encode_binary(v, cls.GAME_STATE[1])
-            elif "HP" in k:
-                continue
-            else:
-                raise EncodingMatchException(f"Failed to match pattern for {k, v}!")
 
         # flatten encoded values and vectorize
         input_layer = np.array(list(flatten(encoded)))
