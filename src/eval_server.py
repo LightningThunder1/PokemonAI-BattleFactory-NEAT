@@ -40,7 +40,7 @@ class EvaluationServer:
 
         # gen evaluation vars
         self.evaluated_genomes = []  # track evaluated genomes if socket timeout occurs
-        self.client_pids = None  # emulator client process ID(s)
+        self.client_ps = None  # emulator client process ID(s)
         self.eval_idx = None  # thread-safe evaluation index
         self.genomes = None  # list of genomes to evaluate
         self.config = None  # config obj for creating networks
@@ -70,7 +70,7 @@ class EvaluationServer:
         # set generation vars
         self.logger = self._init_logger(gen_id)  # init the logger for this generation
         self.mutex = threading.Lock()
-        self.client_pids = []
+        self.client_ps = []
         self.eval_idx = 0
         self.config = config
         self.genomes = genomes
@@ -348,29 +348,33 @@ class EvaluationServer:
     def spawn_client(self):
         """
         Spawns the emulator process and starts the eval_client.lua script.
-        :return: Process ID
+        :return: Process object
         """
         self.logger.debug("Spawning emulator client process...")
-        pre_fn = os.setsid if platform.system() != 'Windows' else None
-        pid = subprocess.Popen([
+        ps = subprocess.Popen([
                 self.EMU_PATH,
                 f'--chromeless',
                 f'--socket_port={self.PORT}',
                 f'--socket_ip={self.HOST}',
                 f'--lua={os.path.abspath(self.EVAL_SCRIPT)}'
             ],
-            preexec_fn=pre_fn,
-        ).pid
-        self.client_pids.append(pid)
-        return pid
+            preexec_fn=os.setsid if platform.system() != 'Windows' else None,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if platform.system() == 'Windows' else None,
+        )
+        self.client_ps.append(ps)
+        return ps
 
-    def kill_client(self, pid):
+    def kill_client(self, ps):
         """
         Kills the emulator client process group.
         :return: None
         """
         # Send the signal to all the process groups
-        os.killpg(os.getpgid(pid), signal.SIGTERM)
+        if platform.system() != 'Windows':
+            os.killpg(os.getpgid(ps.pid), signal.SIGTERM)
+        else:
+            # ps.send_signal(signal.CTRL_BREAK_EVENT)
+            ps.send_signal(signal.SIGTERM)
 
     def close_server(self, s):
         """
@@ -378,7 +382,7 @@ class EvaluationServer:
         """
         self.logger.debug("Closing server...")
         try:
-            for pid in self.client_pids:
+            for pid in self.client_ps:
                 self.kill_client(pid)
             s.shutdown(socket.SHUT_RDWR)
             s.close()
