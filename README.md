@@ -48,7 +48,6 @@ Fitness is calculated as:
 ## Results
 - **Best Fitness**: 1894.0 (Generation 154, Genome ID 3739), equivalent to multiple battles won and significant enemy knockouts.
 - **Population**: 250 genomes across 4 species, with an average fitness of 116.20 (stdev: 314.44).
-- **Training Time**: ~5596 seconds per generation (average: 5533.54 seconds over 10 generations).
 - **Performance**: The AI learned to select effective moves, switch Pokémon strategically, and make informed trades, handling the Battle Factory’s stochastic nature and encrypted memory.
 
 ## Skills Demonstrated
@@ -73,7 +72,7 @@ Fitness is calculated as:
    - `python main.py`
    - The script spawns 10 BizHawk instances, runs the NEAT algorithm, and logs results to `./logs/`.
 5. **Checkpoints**:
-   - Training checkpoints are saved in ./checkpoints/ and can be restored by setting restore_ckpt = True in main.py.
+   - Training checkpoints are saved in `./checkpoints/` and can be restored by setting `restore_ckpt = True` in `main.py`.
 
 ## References
 - [NEAT Paper](https://nn.cs.utexas.edu/?stanley:ec02)
